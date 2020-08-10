@@ -1,10 +1,9 @@
 
 import numpy as np  
 import scipy.optimize
-import sys
-from copy import copy
 from collections import defaultdict
 import time
+import json
 
 from kaggle_environments.envs.halite.helpers import *
 
@@ -21,7 +20,6 @@ SPECIFIC_DOWNWEIGHT = 0.4 #Downweight for lighter enemy ships in dominance map (
 BETA = 0.2 #Weighting to next turn miningLogic
 TAU = 0.9 #Faith in our vectors
 
-PREV = Point(-1,-1)
 FUTURE_DROPOFFS = defaultdict(lambda: False)
 
 DROPOFF_THRESHOLD = 1 #Necessary amortized value before returning
@@ -35,7 +33,7 @@ enemy_squares = defaultdict(lambda: [None]*STORED_MOVES) #The stored enemy posit
 enemy_vectors = {} #Stored resulting vector from enemy positions
 
 
-PRINT_TIME = False
+log = []
 
 
 def createDominanceMap(board, ships):
@@ -53,7 +51,7 @@ def createDominanceMap(board, ships):
     for entry in dominance_map:
         dominance_map[entry] = (1 - dominance_map[entry]) * GENERAL_DOWNWEIGHT #The probability any enemy enters the square
     
-    specific_dominance_map = defaultdict(lambda: {})
+    specific_dominance_map = {}
     for ship in ships:
         #Same as general downweight but only for ships that weigh more than itself
         #Going towards heavier ships would be the same, but I took it out because our local pathing doesn't account for those ships anymore
@@ -65,7 +63,6 @@ def createDominanceMap(board, ships):
             #1 - The probability at least 1 smaller enemy is in the area * downweight + general downweighting
             #Symbolizes value lost from dying (smaller ship) + value lost from them eating halite in the area (general)
             specific_dominance_map[ship.id][entry] = 1 - ( (1 - specific_dominance_map[ship.id][entry]) * SPECIFIC_DOWNWEIGHT + dominance_map[entry] )
-
     return specific_dominance_map #Each value runs somewhere between 0 - (GENERAL_DOWNEIGHT + SPECIFIC_DOWNWEIGHT)
 
 def findAmortizedValueList(board, ship_point, dominance = None, printf=True):
@@ -105,7 +102,7 @@ def findAmortizedValueList(board, ship_point, dominance = None, printf=True):
     return targets
 
 def miningLogic(board, ships, dominance_map):
-    global PREV, DISTANCE_THRESHOLD
+    global DISTANCE_THRESHOLD
     size = board.configuration.size
     
     targets = {}
@@ -117,33 +114,24 @@ def miningLogic(board, ships, dominance_map):
     s = time.time()
     for ship in ships:
         target_list[ship] = findAmortizedValueList(board, ship.position, dominance_map[ship.id])
-        ship_loss = (ship, target_list[ship][0]['value'] - target_list[ship][1]['value']) #tuple of (ship, ship_loss)
+        ship_loss = (ship.id, target_list[ship][0]['value'] - target_list[ship][1]['value']) #tuple of (ship, ship_loss)
         spot_loss.append(ship_loss)
     assignment_order = sorted(spot_loss, key=lambda x: x[1], reverse=True) #sort spot_loss by loss
-    e = time.time()
-    print("mining part 1 time", e-s)
     #Assign every ship to its target in order
     b1,b2 = 0, 0
-    for (ship, loss) in assignment_order:
+    for (ship_id, loss) in assignment_order:
+        ship = board.ships[ship_id]
         s1 = time.time()
-        first = True
         #-- Get Top Value From target_list not assigned w/ augmentations--#
         while True:
-            #if first:
-            #    print('tl', target_list[ship][0], target_list[ship][1], target_list[ship][2])
             top = target_list[ship].pop(0)
-            #if first:
-            #    print("TOP", top)
-            #    print('tv', augmented[top['point']], 'or', top['value'], 'nv' ,next_val)
             _next = target_list[ship][0]
             top_val = augmented[top['point']] if augmented[top['point']] else top['value']
             next_val = augmented[_next['point']] if augmented[_next['point']] else _next['value']
             if (not assigned[top['point']] and next_val <= top_val) or len(target_list[ship]) == 0:
                 break
-            first = False
         s2 = time.time()
-        targets[ship] = {'point':top['point'], 'value':top_val, 'halite': board.cells[top['point']].halite}
-        PREV = targets[ship]['point']
+        targets[ship_id] = {'point':top['point'], 'value':top_val, 'halite': board.cells[top['point']].halite}
         assigned[top['point']] = True
         
         # ~~ Rerun of amortized analysis ~~ Potentially unnecessary
@@ -153,8 +141,7 @@ def miningLogic(board, ships, dominance_map):
         s3 = time.time()
         b1 += s2 - s1
         b2 += s3 - s2
-    print("mining part 2 time", b1)
-    print("mining part 3 time", b2)
+    #print("mining part 3 time", b2)
     
     return (targets, assignment_order, augmented, assigned)
 
@@ -211,11 +198,12 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
 
 def assignMovesToShips(board, order, targets):
     open_space = defaultdict(lambda: True)
-    for (ship, loss) in order:
+    for (ship_id, loss) in order:
+        ship = board.ships[ship_id]
         if decideDropoff(ship, targets):
             actions = findDesiredAction(board, ship, nearestDropoff(board, ship.position)['point'], 1, can_mine = False) #1 is a low ammortized value
         else:
-            actions = findDesiredAction(board, ship, targets[ship]['point'], targets[ship]['value'])
+            actions = findDesiredAction(board, ship, targets[ship.id]['point'], targets[ship.id]['value'])
         ship_point = ship.position
         while True:
             top_direction = actions.pop(0)
@@ -231,13 +219,13 @@ def assignMovesToShips(board, order, targets):
         global FUTURE_DROPOFFS
         if FUTURE_DROPOFFS[(ship.position.x, ship.position.y)]:
             ship.next_action = ShipAction.CONVERT
-            print("CONVERTING:", (ship.position.x, ship.position.y))
+            #print("CONVERTING:", (ship.position.x, ship.position.y))
             FUTURE_DROPOFFS[(ship.position.x, ship.position.y)] = False
 
        # print("SHIP ACTION", ship.next_action)
                 
 def decideDropoff(ship, targets):
-    return targets[ship]['value'] < DROPOFF_THRESHOLD
+    return targets[ship.id]['value'] < DROPOFF_THRESHOLD
 
 def nearestDropoff(board, ship_point):
     size = board.configuration.size
@@ -283,6 +271,7 @@ def decideIfSpawnShip(board):
     return ship_val > 500
 
 def SpawnShips2(board, augmented, assigned):
+    log = []
     for shipyard in board.current_player.shipyards:
         a_list = findAmortizedValueList(board, shipyard.position)
         while True:
@@ -294,8 +283,8 @@ def SpawnShips2(board, augmented, assigned):
                 break
         if top_val * (400-board.step) * BETA/(1-BETA) > 500:
             shipyard.next_action = ShipyardAction.SPAWN
-            print("SHIPYARD", shipyard.id, "SPAWNED with", top_val, 'a_val')
-
+        log.append({'shipyard':shipyard.id, 'ship_val': top_val * (400-board.step) * BETA/(1-BETA), 'a_val': top_val})
+    return log
 
 def decideIfCreateDropoff(board, ships, targets):
     size = board.configuration.size
@@ -311,10 +300,10 @@ def decideIfCreateDropoff(board, ships, targets):
             square_distance = min(x_dist, size+1-x_dist) + min(y_dist, size+1-y_dist)
 
             nearest_dropoff = nearestDropoff(board, ship_point)['dist']
-            saved_amount = targets[ship]['value'] * max(nearest_dropoff - square_distance,0)
+            saved_amount = targets[ship.id]['value'] * max(nearest_dropoff - square_distance,0)
             total_saved += saved_amount
             x = max(nearest_dropoff - square_distance,0)
-            print_total_saved += "( " + str(targets[ship]['value']) + " * " + str(x) + " ), "
+            print_total_saved += "( " + str(targets[ship.id]['value']) + " * " + str(x) + " ), "
         return (total_saved, print_total_saved)
     
     max_savings, best_dropoff = 0, None
@@ -334,8 +323,7 @@ def decideIfCreateDropoff(board, ships, targets):
                 max_savings = savings
                 best_dropoff = square
                 max_print = print_total_saved
-    print("TOTAL SAVED:", max_print)
-    print(" savings", max_savings, 'max square', best_dropoff)
+
     if convert_savings == max_savings:
         best_dropoff = best_convert
     
@@ -344,8 +332,8 @@ def decideIfCreateDropoff(board, ships, targets):
     
     if max_savings > 1000:
         FUTURE_DROPOFFS[(best_dropoff.x, best_dropoff.y)] = True
-        print("FUTURE DROPOFF SET TO TRUE:", (best_dropoff.x, best_dropoff.y))
-    return
+        #print("FUTURE DROPOFF SET TO TRUE:", (best_dropoff.x, best_dropoff.y))
+    return (best_dropoff, max_savings)
 
 def updateEnemyVectors(board):
     STORED_ITER = board.step % STORED_MOVES
@@ -364,18 +352,25 @@ def updateEnemyVectors(board):
             enemy_squares[ship.id][STORED_ITER] = ship.position
             enemy_vectors[ship.id] = vector
 
+def remap_keys(mapping):
+        return [{'point':k, 'value': v} for k, v in dict(mapping).items()]
 def agent(obs, config):
-
     start = time.time()
     size = config.size
     board = Board(obs, config)
     my = board.current_player
     ships = my.ships
-    print("\nSHIP POSITIONS: ")
+
+    step_log = {}
+    step_log['ship_positions'] = []
     for ship in ships:
-        print("  ", ship.position)
+        step_log['ship_positions'].append(ship.position)
+
+
     updateEnemyVectors(board)
     uev = time.time()
+    step_log['enemy_vectors'] = enemy_vectors
+
     #print("Update Enemy Vectors:", round(uev-start, 2), 'total:', round(uev-start,2))
 
     dominance_map = createDominanceMap(board, ships)
@@ -385,11 +380,12 @@ def agent(obs, config):
 
     (targets, assignment_order, augmented, assigned) = miningLogic(board, ships, dominance_map)
     mining = time.time()
-    print("Mining Logic:", round(mining-dom, 2), 'total:', round(mining-start,2))
+   # print("Mining Logic:", round(mining-dom, 2), 'total:', round(mining-start,2))
     #for ship in targets:
     #    print("  ",ship.position, '->' ,targets[ship])
 
-    decideIfCreateDropoff(board, ships, targets)
+    (best_dropoff, max_savings) = decideIfCreateDropoff(board, ships, targets)
+    step_log['dropoff'] = {'point': best_dropoff, 'value': max_savings}
     df = time.time()
     #print("Create dropoff:", round(df-mining, 2), 'total:', round(df-start,2))
 
@@ -398,9 +394,23 @@ def agent(obs, config):
    # print("Assign Moves:", round(assign-df, 2), 'total:', round(assign-start,2))
     
     #decideIfSpawnShip(board)
-    SpawnShips2(board, augmented, assigned)
-    end =time.time()
-    print("Spawn Ships:", round(end-assign, 2), 'total:', round(end-start,2))
-    print("\n\n")
-  #  print("TIME TOOK", end-start)
+    spawn_log = SpawnShips2(board, augmented, assigned)
+    step_log['spawn'] = spawn_log
+    end = time.time()
+    #print("Spawn Ships:", round(end-assign, 2), 'total:', round(end-start,2))
+    #print("\n\n")
+    # print("TIME TOOK", end-start)
+    global log
+
+    for ship in dominance_map:
+        dominance_map[ship] = remap_keys(dominance_map[ship])
+    step_log['dominance'] = dominance_map
+    step_log['mining'] = {'targets': targets, 'order': assignment_order, 'augmented': remap_keys(augmented), 'assigned': remap_keys(assigned)}
+    log.append(step_log)
+    #print(log)
+    #print("\n\n")
+    with open('log.txt', 'w') as outfile:
+        json.dump(log, outfile)
+    if board.step > 50:
+        sys.exit()
     return my.next_actions
