@@ -32,7 +32,7 @@ TEST_UGH = 0
 enemy_squares = defaultdict(lambda: [None]*STORED_MOVES) #The stored enemy positions
 enemy_vectors = {} #Stored resulting vector from enemy positions
 
-
+MAX_STEPS = 100
 log = []
 
 
@@ -105,45 +105,69 @@ def miningLogic(board, ships, dominance_map):
     global DISTANCE_THRESHOLD
     size = board.configuration.size
     
-    targets = {}
-    assigned = defaultdict(lambda: False)
-    augmented = defaultdict(lambda: False)
     target_list = {}
     spot_loss = []
     #create list for every ship
     s = time.time()
     for ship in ships:
-        target_list[ship] = findAmortizedValueList(board, ship.position, dominance_map[ship.id])
-        ship_loss = (ship.id, target_list[ship][0]['value'] - target_list[ship][1]['value']) #tuple of (ship, ship_loss)
+        target_list[ship.id] = findAmortizedValueList(board, ship.position, dominance_map[ship.id])
+        ship_loss = (ship.id, target_list[ship.id][0]['value'] - target_list[ship.id][1]['value']) #tuple of (ship, ship_loss)
         spot_loss.append(ship_loss)
+
     assignment_order = sorted(spot_loss, key=lambda x: x[1], reverse=True) #sort spot_loss by loss
+    #return assignShipsToTargets(board, assignment_order, target_list, dominance_map)
+
     #Assign every ship to its target in order
-    b1,b2 = 0, 0
+    def slope(s,e):
+        m = (e.y - s.y) / (e.x - s.x) if e.x != s.x else 'v'
+        b = s.y - s.x * m if e.x != s.x else e.x
+        return (m,b)
+
+    targets = {}
+    assigned = defaultdict(lambda: False)
+    augmented = defaultdict(lambda: False)
+    slopes = defaultdict(lambda:[])
     for (ship_id, loss) in assignment_order:
         ship = board.ships[ship_id]
         s1 = time.time()
         #-- Get Top Value From target_list not assigned w/ augmentations--#
+
         while True:
-            top = target_list[ship].pop(0)
-            _next = target_list[ship][0]
+            top = target_list[ship_id].pop(0)
+            _next = target_list[ship_id][0]
             top_val = augmented[top['point']] if augmented[top['point']] else top['value']
             next_val = augmented[_next['point']] if augmented[_next['point']] else _next['value']
-            if (not assigned[top['point']] and next_val <= top_val) or len(target_list[ship]) == 0:
+            if (not assigned[top['point']] and next_val <= top_val) or len(target_list[ship_id]) == 0:
                 break
+
         s2 = time.time()
-        targets[ship_id] = {'point':top['point'], 'value':top_val, 'halite': board.cells[top['point']].halite}
+        targets[ship_id] = {'point':top['point'], 'value':top_val, 'halite': board.cells[top['point']].halite, 'returning': False}
         assigned[top['point']] = True
+        slopes[slope(ship.position, top['point'])].append(ship_id)
         
         # ~~ Rerun of amortized analysis ~~ Potentially unnecessary
         next_target_list = findAmortizedValueList(board, top['point'], dominance_map[ship.id], printf=False)
-        v1, v2 = next_target_list[0]['value'], next_target_list[1]['value']
-        augmented[v1] = BETA * (v1 - v2)
+        #obv we will stay at the point (its the best point from a distance, must be best if we are on it), so take next
+        p1, v1, v2 = next_target_list[1]['point'], next_target_list[1]['value'], next_target_list[2]['value']
+        augmented[p1] = BETA * (v1 - v2)
         s3 = time.time()
-        b1 += s2 - s1
-        b2 += s3 - s2
-    #print("mining part 3 time", b2)
+        target_list[ship_id] = target_list[ship_id][:3]
     
-    return (targets, assignment_order, augmented, assigned)
+    #Rearrange encapsulated targets
+    print_slopes = {}
+    for slope in slopes:
+        if len(slopes[slope]) > 0:
+            slope_target_list = [targets[ship_id] for ship_id in slopes[slope]]
+            if slope[0] != 'v':
+                sorted_targets = sorted(slope_target_list, key= lambda k: k['point'].x)
+                sorted_starts = sorted(slopes[slope], key = lambda k: board.ships[k].position.x)
+            else:
+                sorted_targets = sorted(slope_target_list, key= lambda k: k['point'].y)
+                sorted_starts = sorted(slopes[slope], key = lambda k: board.ships[k].position.y)
+            print_slopes[str(slope)] = {'starts': slopes[slope], 'targets': slope_target_list}
+            for i in range(len(slopes[slope])):
+                targets[ sorted_starts[i] ] = sorted_targets[i]
+    return (targets, target_list, assignment_order, augmented, assigned, print_slopes)
 
 def factorCollisionsIntoActions(board, ship):
     weighting = defaultdict(lambda: 0)
@@ -171,20 +195,28 @@ def factorCollisionsIntoActions(board, ship):
                             weighting[danger_point] += prob_other * -(500 + ship.halite)
     return weighting
 
-def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
+def findDesiredAction(board, ship, end, amortized_value, space_taken, can_mine = True):
+    size = board.configuration.size
     start = ship.position
     if start == end:
-        return [(0,0)] #None = Mine/Stay Still
+        return ([(0,0)],{})
+
     directions = {}
-    total_dist = abs(end.x - start.x) + abs(end.y - start.y)
-    vec_x = ( abs(end.x - start.x) / total_dist) 
-    vec_y = ( abs(end.y - start.y) / total_dist)
+    x_mult, y_mult = 1, 1
+    x_dist = abs(start.x - end.x)
+    if x_dist > size+1-x_dist:
+        x_mult = -1
+        x_dist = size+1-x_dist
+
+    y_dist = abs(start.y - end.y)
+    if y_dist > size+1-y_dist:
+        y_mult = -1
+        y_dist = size+1-y_dist
+    #length of traveling wrapping around the sides is the loop size - the forward facing path
+    total_dist = x_dist + y_dist
+    vec_x = x_dist / total_dist * x_mult
+    vec_y = y_dist / total_dist * y_mult
     
-    # (0,0) point is lower left hand corner of the board
-    if end.x < start.x: #target is to the left of the ship
-        vec_x *= -1
-    if end.y < start.y: #target is below the ship
-        vec_y *= -1
     collision_weightings = factorCollisionsIntoActions(board, ship)
     directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)]
     directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)]
@@ -194,36 +226,78 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
     directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
     #print("DIRECTIONS", directions)
-    return sorted(directions,key= lambda k: directions[k], reverse=True)
+    return (sorted(directions,key= lambda k: directions[k], reverse=True), directions)
 
-def assignMovesToShips(board, order, targets):
-    open_space = defaultdict(lambda: True)
+def assignMovesToShips(board, order, targets, spawned_points):
+    space_taken = spawned_points
+    action_dict = {'actions':{}, 'directions':{}}
     for (ship_id, loss) in order:
         ship = board.ships[ship_id]
-        if decideDropoff(ship, targets):
-            actions = findDesiredAction(board, ship, nearestDropoff(board, ship.position)['point'], 1, can_mine = False) #1 is a low ammortized value
-        else:
-            actions = findDesiredAction(board, ship, targets[ship.id]['point'], targets[ship.id]['value'])
+        if ship.position == targets[ship.id]['point'] and space_taken[ship.position]:
+            targets[ship.id] = space_taken[ship.position]
+
+        (actions, values) = findDesiredAction(board, ship, targets[ship.id]['point'], targets[ship.id]['value'], space_taken, can_mine = not targets[ship.id]['returning'])
         ship_point = ship.position
+        action_dict['directions'][ship_id] = remap_keys(values)
         while True:
             top_direction = actions.pop(0)
             new_point = Point(ship_point.x + top_direction[0], ship_point.y + top_direction[1])
-            if open_space[new_point]:
+            if not space_taken[new_point]:
                 break
             if len(actions) == 0: #If this happens we are fucked, two friendly ships are colliding
                 break
 
-        open_space[new_point] = False
+        space_taken[new_point] = targets[ship.id]
         ship.next_action = DIR_TO_ACTION[top_direction]
-
+        action_dict['actions'][ship_id] = top_direction
         global FUTURE_DROPOFFS
         if FUTURE_DROPOFFS[(ship.position.x, ship.position.y)]:
             ship.next_action = ShipAction.CONVERT
-            #print("CONVERTING:", (ship.position.x, ship.position.y))
             FUTURE_DROPOFFS[(ship.position.x, ship.position.y)] = False
-
-       # print("SHIP ACTION", ship.next_action)
+            space_taken[new_point] = False
+            #space_taken[ship_point] = True i think you can move onto a newly converted shipyard
+            action_dict['actions'][ship_id] = 'convert'
+    return action_dict
                 
+
+def decideDropoffs(board, targets, nsv, dominance_map):
+    sorted_halite_order = sorted(board.current_player.ships, key= lambda k: k.halite, reverse=True)
+    remainder = board.current_player.halite % 500
+    i = board.current_player.halite // 500
+    dropoff_targets, dropoff_target_list = {}, {}
+    ships_still_mining = []
+    dropoff_log = {}
+    for ship in sorted_halite_order:
+        #cost of returning to dropoff is the amortized value * number of turns spent returning to base
+        nearest_dropoff = nearestDropoff(board, ship.position)
+        return_cost = targets[ship.id]['value']
+        return_value = 0
+        halite = ship.halite
+        while halite > 0 and i < len(nsv):
+            if halite >= 500-remainder:
+                halite -= 500-remainder
+                return_value += nsv[i] * (500-remainder)/500
+                remainder = 0
+                i += 1
+            else:
+                remainder += halite
+                return_value += nsv[i] * halite / 500
+                halite = 0
+        return_value = return_value / nearest_dropoff['dist'] if nearest_dropoff['dist'] > 0 else 0
+        go_back = return_value > return_cost
+        dropoff_log[ship.id] = {'value': return_value, 'cost': return_cost, 'a_val': targets[ship.id]['value'], 'returned': True if go_back else False, 'H':ship.halite }
+        if return_value > return_cost:
+            #reassign target of the ship
+            dropoff_targets[ship.id] = {'point':nearest_dropoff['point'], 'value': 1, 'halite': 0, 'returning': True}
+            dropoff_target_list[ship.id] = 'returning to dropoff'
+        else: #ship isn't returning
+            ships_still_mining.append(ship)
+
+    (targets, target_list, _, _, _, _) = miningLogic(board, ships_still_mining, dominance_map)
+    targets.update(dropoff_targets)
+    target_list.update(dropoff_target_list)
+    return (targets, target_list, dropoff_log)
+        
 def decideDropoff(ship, targets):
     return targets[ship.id]['value'] < DROPOFF_THRESHOLD
 
@@ -241,8 +315,7 @@ def nearestDropoff(board, ship_point):
             min_pos = yard
     return {'dist':min_distance, 'point': min_pos}
 
-def decideIfSpawnShip(board):
-    
+def decideIfSpawnShip(board):  
     #find current total halite on board
     H_t = 0
     s = len(board.ships)
@@ -272,19 +345,31 @@ def decideIfSpawnShip(board):
 
 def SpawnShips2(board, augmented, assigned):
     log = []
+    nsv = []
+    spawned_points = defaultdict(lambda: False)
+    GAMMA = ( np.log(401) - np.log(board.step+1)) * 50 + 1
     for shipyard in board.current_player.shipyards:
-        a_list = findAmortizedValueList(board, shipyard.position)
-        while True:
-            top = a_list.pop(0)
-            _next = a_list[0]
-            top_val = augmented[top['point']] if augmented[top['point']] else top['value']
-            next_val = augmented[_next['point']] if augmented[_next['point']] else _next['value']
-            if (not assigned[top['point']] and next_val <= top_val) or len(a_list) == 0:
-                break
-        if top_val * (400-board.step) * BETA/(1-BETA) > 500:
-            shipyard.next_action = ShipyardAction.SPAWN
-        log.append({'shipyard':shipyard.id, 'ship_val': top_val * (400-board.step) * BETA/(1-BETA), 'a_val': top_val})
-    return log
+        next_ship_value = 500
+        while next_ship_value >= 500 and len(nsv)< 10:
+            a_list = findAmortizedValueList(board, shipyard.position)
+            while True:
+                top = a_list.pop(0)
+                _next = a_list[0]
+                top_val = augmented[top['point']] if augmented[top['point']] else top['value']
+                next_val = augmented[_next['point']] if augmented[_next['point']] else _next['value']
+                if (not assigned[top['point']] and next_val <= top_val) or len(a_list) == 0:
+                    break
+            next_ship_value = top_val * GAMMA
+            assigned[top['point']] = True
+            nsv.append(next_ship_value)
+            if next_ship_value > 500 and not assigned[shipyard.position] and board.current_player.halite > 500:
+                shipyard.next_action = ShipyardAction.SPAWN
+                spawned_points[shipyard.position] = True
+
+        #TODO: UPDATE augmented / assigned based on spawning ships here
+        log.append({'shipyard':shipyard.id, 'ship_val': top_val * GAMMA, 'a_val': top_val})
+    nsv = sorted(nsv, reverse=True)
+    return (nsv, spawned_points,log)
 
 def decideIfCreateDropoff(board, ships, targets):
     size = board.configuration.size
@@ -333,7 +418,7 @@ def decideIfCreateDropoff(board, ships, targets):
     if max_savings > 1000:
         FUTURE_DROPOFFS[(best_dropoff.x, best_dropoff.y)] = True
         #print("FUTURE DROPOFF SET TO TRUE:", (best_dropoff.x, best_dropoff.y))
-    return (best_dropoff, max_savings)
+    return (best_dropoff, max_savings, max_print)
 
 def updateEnemyVectors(board):
     STORED_ITER = board.step % STORED_MOVES
@@ -354,6 +439,7 @@ def updateEnemyVectors(board):
 
 def remap_keys(mapping):
         return [{'point':k, 'value': v} for k, v in dict(mapping).items()]
+
 def agent(obs, config):
     start = time.time()
     size = config.size
@@ -364,53 +450,59 @@ def agent(obs, config):
     step_log = {}
     step_log['ship_positions'] = []
     for ship in ships:
-        step_log['ship_positions'].append(ship.position)
+        step_log['ship_positions'].append({ship.id:ship.position})
 
+    step_log['enemy_ship_positions'] = []
+    for ship_id in board.ships:
+        ship = board.ships[ship_id]
+        if ship.player_id != board.current_player_id:
+            step_log['enemy_ship_positions'].append({ ship_id : ship.position })
 
     updateEnemyVectors(board)
     uev = time.time()
-    step_log['enemy_vectors'] = enemy_vectors
-
-    #print("Update Enemy Vectors:", round(uev-start, 2), 'total:', round(uev-start,2))
+    step_log['enemy_vectors'] = enemy_vectors.copy()
 
     dominance_map = createDominanceMap(board, ships)
     dom = time.time()
-    #print("Dominance Map:", round(dom-uev, 2), 'total:', round(dom-start,2))
 
-
-    (targets, assignment_order, augmented, assigned) = miningLogic(board, ships, dominance_map)
+    (targets, target_list, assignment_order, augmented, assigned, log_slopes) = miningLogic(board, ships, dominance_map)
     mining = time.time()
-   # print("Mining Logic:", round(mining-dom, 2), 'total:', round(mining-start,2))
-    #for ship in targets:
-    #    print("  ",ship.position, '->' ,targets[ship])
+    (nsv, spawned_points, spawn_log) = SpawnShips2(board, augmented, assigned)
+    step_log['spawn'] = spawn_log
+    (targets, target_list, log_dropoffs) = decideDropoffs(board, targets, nsv, dominance_map)
+    step_log['returns'] = log_dropoffs
 
-    (best_dropoff, max_savings) = decideIfCreateDropoff(board, ships, targets)
-    step_log['dropoff'] = {'point': best_dropoff, 'value': max_savings}
+    (best_dropoff, max_savings, mp) = decideIfCreateDropoff(board, ships, targets)
+    step_log['dropoff'] = {'point': best_dropoff, 'value': max_savings, 'math': mp}
     df = time.time()
     #print("Create dropoff:", round(df-mining, 2), 'total:', round(df-start,2))
 
-    assignMovesToShips(board, assignment_order, targets)
+    #TODO: Pass in locations of spawned ships
+    actions = assignMovesToShips(board, assignment_order, targets, spawned_points)
+    step_log['ship_actions'] = actions
     assign = time.time()
    # print("Assign Moves:", round(assign-df, 2), 'total:', round(assign-start,2))
-    
     #decideIfSpawnShip(board)
-    spawn_log = SpawnShips2(board, augmented, assigned)
-    step_log['spawn'] = spawn_log
     end = time.time()
     #print("Spawn Ships:", round(end-assign, 2), 'total:', round(end-start,2))
-    #print("\n\n")
+    print("\n\n")
     # print("TIME TOOK", end-start)
     global log
 
     for ship in dominance_map:
         dominance_map[ship] = remap_keys(dominance_map[ship])
-    step_log['dominance'] = dominance_map
-    step_log['mining'] = {'targets': targets, 'order': assignment_order, 'augmented': remap_keys(augmented), 'assigned': remap_keys(assigned)}
+    #step_log['dominance'] = dominance_map
+    step_log['mining'] = {'order': assignment_order, 'augmented': remap_keys(augmented), 'assigned': remap_keys(assigned),'targets':{}, 'slopes': log_slopes}
+    for ship_id in targets:
+        step_log['mining']['targets'][ship_id] = {'target': targets[ship_id],'top3':target_list[ship_id]}
+    
+    step_log['time'] = end-start
     log.append(step_log)
     #print(log)
     #print("\n\n")
     with open('log.txt', 'w') as outfile:
         json.dump(log, outfile)
-    if board.step > 50:
+
+    if board.step > MAX_STEPS:
         sys.exit()
     return my.next_actions
