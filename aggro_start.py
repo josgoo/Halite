@@ -61,9 +61,11 @@ DANGER = defaultdict(lambda: [0,0,0])
 CENTER, CENTER_VAL = None, float('inf')
 HAS_DECIMATED = -1
 BORDERS = {}
-log = []
 
+log = []
+logging_mode = True
 print_log = True
+
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
     specific_dominance = defaultdict(lambda: 1)
@@ -137,7 +139,6 @@ def isDecimated(board):
     if decimated:
         global HAS_DECIMATED
         HAS_DECIMATED = OPPONENT_TO_TARGET
-        print('decimated', OPPONENT_TO_TARGET)
     return decimated
 
 def chooseOpponentToDecimateViaRatio(board):
@@ -156,7 +157,6 @@ def chooseOpponentToDecimateViaRatio(board):
                 max_ratio = ratio
                 max_opponent = opponent.id
 
-    print('target', max_opponent)
     OPPONENT_TO_TARGET = max_opponent
 
 def getBorders(board):
@@ -221,9 +221,14 @@ def isPastAttackingTime(board):
     return board.step >= 80 or len(board.current_player.ships) >= 16
 
 def attackLogic(board, attacking_ships):
-    attack_point_vals, attack_point_vals_log = {}, {}
-    size = board.configuration.size
+    global logging_mode
     attack_log = {}
+    if logging_mode:
+        attack_point_vals_log = {}
+
+    attack_point_vals = {}
+    size = board.configuration.size
+    
     global EXPECTED_CAPTURE_TIME, PREV_ATTACK_TARGETS
     if isPastAttackingTime(board): #begin to attack
         EXPECTED_CAPTURE_TIME[0] = 128
@@ -241,7 +246,9 @@ def attackLogic(board, attacking_ships):
         for e_ship in opponent.ships:
             if e_ship.halite > 0:
                 attack_point_vals[e_ship.id] = defaultdict(lambda: 0)
-                attack_point_vals_log[e_ship.id] = defaultdict(lambda: 0)
+                if logging_mode:
+                    attack_point_vals_log[e_ship.id] = defaultdict(lambda: 0)
+                
                 e_ship_pos = e_ship.position
                 (prob_x, prob_y, prob_other) = expectedShipAction(board, e_ship)
                 move_prob = {}
@@ -265,23 +272,33 @@ def attackLogic(board, attacking_ships):
                         ap = Point(attack_point[0], attack_point[1])
                         within_multiplier = WITHIN_BOUNDARY_MULTIPLIER * distanceDiscount(board, ap) if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and withinBorders(board, ap) else 1
                         attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
-                        attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
-                        #attack_point_vals_log[e_ship.id][str(attack_point)]['rel'].append( {'rel':(rel_x, rel_y), 'possible_point': possible_point })
 
-    attack_log['e_ship, point'] = attack_point_vals_log
+                        if logging_mode:
+                            attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
+
+    if logging_mode:
+        attack_log['e_ship, point'] = attack_point_vals_log
     #populate value of each ship moving to and capturing any ship for every point
-    attack_vals_log, attack_vals = {}, {}
+    attack_vals = {}
+    if logging_mode:
+        attack_vals_log = {}
+
     for ship in attacking_ships:
         if RETURNING[ship.id] or ship.halite > 0:
             continue
         attack_vals[ship.id] = shipAttackValue(board, ship.position, attack_point_vals)
-        attack_vals_log[ship.id] = {}
-        for square in attack_vals[ship.id]:
-            attack_vals_log[ship.id][str(square)] = attack_vals[ship.id][square]
-    attack_log['f_ship, point'] = attack_vals_log
+
+        if logging_mode:
+            attack_vals_log[ship.id] = {}
+            for square in attack_vals[ship.id]:
+                attack_vals_log[ship.id][str(square)] = attack_vals[ship.id][square]
+    
+    if logging_mode:
+        attack_log['f_ship, point'] = attack_vals_log
+        log_targeted = defaultdict(lambda: False)
     #assign targets based on the list
     attack_targets = {}
-    log_targeted, targeted = defaultdict(lambda: False), defaultdict(lambda: False)
+    targeted = defaultdict(lambda: False)
     attack_order = []
     #assign targets to every attacking ship unless we have already assigned all attackers
     while len(attack_targets) < len(attacking_ships) and len(attack_targets) < MAX_ATTACKERS_TO_SHIP * len(attack_point_vals):
@@ -305,11 +322,16 @@ def attackLogic(board, attacking_ships):
         if max_ship.id in PREV_ATTACK_TARGETS and PREV_ATTACK_TARGETS[max_ship.id]['target']:
             N_ATTACKING[ PREV_ATTACK_TARGETS[max_ship.id]['target'] ] -= 1
         targeted[max_square] = True
-        log_targeted[str(max_square)] = True
         attack_order.append(max_ship.id)
-    attack_log['targets'] = attack_targets
-    attack_log['targeted'] = log_targeted
-    attack_log['n_attacking'] = N_ATTACKING
+
+        if logging_mode:
+            log_targeted[str(max_square)] = True
+    
+    if logging_mode:
+        attack_log['targets'] = attack_targets
+        attack_log['targeted'] = log_targeted
+        attack_log['n_attacking'] = N_ATTACKING
+
     no_targets_assigned = []
     global ATTACKING_SHIPS, FUTURE_DROPOFF
     for ship in attacking_ships:
@@ -1064,8 +1086,6 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
         BEST_NEW_DROPOFF = best_harbor
     else:
         BEST_NEW_DROPOFF = None
-    if print_log:
-        print("BEST NEW DROPOFF", BEST_NEW_DROPOFF, 'FUTURE DROPOFF', FUTURE_DROPOFF)
     return (best_harbor, {'savings':savings}, max_print, {'harbor': best_harbor, 'mhv': mhv})
 def updateEnemyVectors(board):
     STORED_ITER = board.step % STORED_MOVES
@@ -1098,7 +1118,9 @@ def remap_keys(mapping):
         return [{'point':k, 'value': v} for k, v in dict(mapping).items()]
 PREV_SHIPYARDS = 0
 def agent(obs, config):
-    start = time.time()
+    global logging_mode, print_log
+    if logging_mode:
+        start = time.time()
     size = config.size
     board = Board(obs, config)
     my = board.current_player
@@ -1107,28 +1129,32 @@ def agent(obs, config):
     if len(my.shipyards) != PREV_SHIPYARDS: #not perfect but okay (hopefully)
         findAllNearestDists(board)
 
-    global print_log, NEAREST_DROPOFF
-    if print_log:
-        print("turn:", board.step)
-    step_log = {}
-    step_log['ship_positions'] = {}
-    for ship in board.current_player.ships:
-        step_log['ship_positions'][ship.id] = (ship.position, ship.halite)
-    step_log['enemy_ship_positions'] = {}
-    for ship_id in board.ships:
-        ship = board.ships[ship_id]
-        if ship.player_id != board.current_player_id:
-            step_log['enemy_ship_positions'][ship.id] = (ship.position, ship.halite)
+    if logging_mode:
+        step_log = {}
+        step_log['ship_positions'] = {}
+        for ship in board.current_player.ships:
+            step_log['ship_positions'][ship.id] = (ship.position, ship.halite)
+        step_log['enemy_ship_positions'] = {}
+        for ship_id in board.ships:
+            ship = board.ships[ship_id]
+            if ship.player_id != board.current_player_id:
+                step_log['enemy_ship_positions'][ship.id] = (ship.position, ship.halite)
+
     global SQUARE_AVALS, BORDERS
     SQUARE_AVALS = defaultdict(lambda: 0)
     BORDERS = {}
     updateEnemyVectors(board)
-    step_log['enemy_vectors'] = enemy_vectors.copy()
-    start_dom = time.time()
+
+    if logging_mode:
+        step_log['enemy_vectors'] = enemy_vectors.copy()
+        end_setup = time.time()
+
+    # create the dominance map
     (general_dominance_map, dominance_map) = createDominanceMap(board, ships)
-    end_dom = time.time()
-    if print_log:
-        print("\ndominance_map time:", end_dom-start_dom)
+    if logging_mode:
+        end_dom = time.time()
+    
+    # setup for attacking/mining logic
     attack_ships = []
     mining_ships = []
     for ship in ships:
@@ -1136,73 +1162,114 @@ def agent(obs, config):
             attack_ships.append(ship)
         else:
             mining_ships.append(ship)
-    if print_log:
-        print("attack ships:", len(attack_ships), 'mining ships:', len(mining_ships))
+    
+    # run attack logic
     (attack_targets, targeted, attack_point_vals, attack_order, no_targets_assigned, attack_log) = attackLogic(board, attack_ships)
-    step_log['attack_logic'] = attack_log
-    end_attack = time.time()
-    if print_log:
-        print("attack_logic time:", end_attack-end_dom)
+    if logging_mode:
+        step_log['attack_logic'] = attack_log
+        end_attack = time.time()
+    
+    # run mining logic
     mining_ships = mining_ships + no_targets_assigned
     (mining_targets, target_list, assignment_order, augmented, assigned) = miningLogic(board, mining_ships, dominance_map, targeted)
-    end_mining = time.time()
-    if print_log:
-        print("mining_logic time:", end_mining-end_dom)
+    if logging_mode:
+        end_mining = time.time()
+    
+    # decide whether to spawn ships
     targets = {'mine': mining_targets, 'attack': attack_targets}
     (nsv, spawned_points, spawn_log) = SpawnShips2(board, augmented, assigned, general_dominance_map, attack_point_vals)
-    step_log['spawn'] = spawn_log
-    dropoff_time = time.time()
-    #Clear center of our map for next turn
+    if logging_mode:
+        step_log['spawn'] = spawn_log
+        end_spawn = time.time()
+    
+    # decide whether to create dropoffs. Clear center of our map for next turn
     (best_dropoff, max_savings, mp, harbor) = decideIfCreateDropoff(board, mining_ships, targets['mine'], attack_ships, assigned, general_dominance_map)
-    step_log['dropoff'] = {'best_point': best_dropoff, 'value': max_savings, 'math': mp, 'harbor': harbor}
-    step_log['dropoff']['future'] = FUTURE_DROPOFF
-    end_dropoff = time.time()
-    if print_log:
-        print("dropoff creation time:", end_dropoff-dropoff_time)
+    if logging_mode:
+        step_log['dropoff'] = {'best_point': best_dropoff, 'value': max_savings, 'math': mp, 'harbor': harbor}
+        step_log['dropoff']['future'] = FUTURE_DROPOFF
+        end_dropoff = time.time()
+    
+    # decide whether mining ships should return
     (mine_targets, target_list, log_dropoffs) = returnMiningShips(board, targets['mine'], nsv, dominance_map, targeted)
-    targets['mine'] = mine_targets
+    if logging_mode:
+        targets['mine'] = mine_targets
+        step_log['returns'] = log_dropoffs
+        end_return = time.time()
 
-    step_log['returns'] = log_dropoffs
-    end_return = time.time()
-    if print_log:
-        print("decide if return time:", end_return-end_dropoff)
-    new_ship_avalue = nsv[1] if len(nsv)>1 else 0
+    # assign protectors to shipyards
+    new_ship_avalue = nsv[1] if len(nsv) > 1 else 0
     (protect, protect_log) = assignProtectors(board, new_ship_avalue)
+    if logging_mode:
+        end_protect = time.time()
+
+    # assign moves to ships
     actions = assignMovesToShips(board, assignment_order + attack_order, targets, spawned_points, new_ship_avalue, protect)
-    step_log['ship_actions'] = actions
-    step_log['protect'] = protect_log
-    step_log['danger'] = DANGER.copy()
-    assign = time.time()
+    if logging_mode:
+        step_log['ship_actions'] = actions
+        step_log['protect'] = protect_log
+        step_log['danger'] = DANGER.copy()
+        end_assign_moves = time.time()
+
+    # assign tasks to ships
     assign_log = assignTaskToShips(board, targets, attack_point_vals, general_dominance_map, augmented, assigned)
-    step_log['assign'] = assign_log
-    end = time.time()
-    global log
-    for ship in dominance_map:
-        dominance_map[ship] = remap_keys(dominance_map[ship])
-    step_log['dominance'] = dominance_map
-    step_log['mining'] = {'order': assignment_order, 'augmented': remap_keys(augmented), 'assigned': remap_keys(assigned),'targets':{}}
-    for ship_id in targets['mine']:
-        step_log['mining']['targets'][ship_id] = targets['mine'][ship_id]
+    if logging_mode:
+        step_log['assign'] = assign_log
+        end_assign_tasks = time.time()
 
-    for ship_id in log_dropoffs:
-        try:
-            prev = log[-1]['returns'][ship_id]['H']
-        except:
-            prev = 0
-        mined_t = max(log_dropoffs[ship_id]['H'] - prev, 0)
-        total_mined[ship_id] = (total_mined[ship_id][0] + mined_t, total_mined[ship_id][1]+1)
-    step_log['total_mined'] = dict(total_mined).copy()
-    step_log['time'] = end-start
-    log.append(step_log)
-    step_log['returning_list'] = RETURNING.copy()
-    step_log['center'] = getBorders(board)
+
     PREV_SHIPYARDS = len(my.shipyards)
-    print(board.step)
 
-    if board.step == 200:
-        with open('log.txt') as json_file:
-            json.dump(log, json_file)
-    if board.step == 200:
-        exit()
+    if logging_mode:
+        global log
+        for ship in dominance_map:
+            dominance_map[ship] = remap_keys(dominance_map[ship])
+        step_log['dominance'] = dominance_map
+        step_log['mining'] = {'order': assignment_order, 'augmented': remap_keys(augmented), 'assigned': remap_keys(assigned),'targets':{}}
+        for ship_id in targets['mine']:
+            step_log['mining']['targets'][ship_id] = targets['mine'][ship_id]
+
+        for ship_id in log_dropoffs:
+            try:
+                prev = log[-1]['returns'][ship_id]['H']
+            except:
+                prev = 0
+            mined_t = max(log_dropoffs[ship_id]['H'] - prev, 0)
+            total_mined[ship_id] = (total_mined[ship_id][0] + mined_t, total_mined[ship_id][1]+1)
+        step_log['total_mined'] = dict(total_mined).copy()
+        step_log['returning_list'] = RETURNING.copy()
+        step_log['center'] = getBorders(board)
+
+        end = time.time()
+        step_log['time'] = end - start
+        log.append(step_log)
+
+    if logging_mode and print_log:
+        log_str = "turn: {}\nattacking ships: {}\nmining ships: {}\nattack_target: {}\nhas_decimated: {}\n" \
+                  "best new dropoff: {}\nfuture dropoff: {}\n" \
+                  "setup time: {}\ndominance_map time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
+                  "spawning_logic time: {}\ndecide_create_dropoff time: {}\ndecide_return time: {}\n" \
+                  "protect time: {}\nassign_moves time: {}\nassign_tasks time: {}\nextra_logging time: {}\n"
+        print(log_str.format(board.step,
+                             len(attack_ships),
+                             len(mining_ships),
+                             OPPONENT_TO_TARGET if OPPONENT_TO_TARGET != None else 'None',
+                             HAS_DECIMATED if HAS_DECIMATED >= 0 else 'None',
+                             BEST_NEW_DROPOFF if BEST_NEW_DROPOFF != None else 'None',
+                             FUTURE_DROPOFF if FUTURE_DROPOFF != None else 'None',
+                             end_setup - start,
+                             end_dom - end_setup,
+                             end_attack - end_dom,
+                             end_mining - end_attack,
+                             end_spawn - end_mining,
+                             end_dropoff - end_spawn,
+                             end_return - end_dropoff,
+                             end_protect - end_return,
+                             end_assign_moves - end_protect,
+                             end_assign_tasks - end_assign_moves,
+                             end - end_assign_tasks))
+
+        if board.step == 100:
+            with open('log.txt', 'w') as log_file:
+                json.dump(log, log_file)
 
     return my.next_actions
