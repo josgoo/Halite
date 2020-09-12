@@ -63,7 +63,7 @@ HAS_DECIMATED = -1
 BORDERS = {}
 log = []
 
-print_log = False
+print_log = True
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
     specific_dominance = defaultdict(lambda: 1)
@@ -232,7 +232,6 @@ def attackLogic(board, attacking_ships):
         chooseOpponentToDecimateViaRatio(board)
     if OPPONENT_TO_TARGET != None: #re-evaluate target if the chosen target isn't advantageous enough
         miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in board.players[OPPONENT_TO_TARGET].ships])
-        if miners <= OPPONENT_ATTACK_MIN_SHIPS:
             chooseOpponentToDecimateViaRatio(board)
 
     #assumes all attack ships have 0 halite
@@ -481,8 +480,6 @@ def miningLogic(board, ships, dominance_map, assigned_attacks):
             targets[ship_id]['next_val'] = v1
             augmented[p1] = BETA * (v1 - v2)
             s3 = time.time()
-            #rewrite it for the log
-            #target_list[ship_id] = {'top3':findAmortizedValueList(board, ship.position, dominance_map[ship.id])[:3], 'topped':topped }
 
     def isMining(ship):
         try:
@@ -1201,5 +1198,11 @@ def agent(obs, config):
     step_log['center'] = getBorders(board)
     PREV_SHIPYARDS = len(my.shipyards)
     print(board.step)
+
+    if board.step == 200:
+        with open('log.txt') as json_file:
+            json.dump(log, json_file)
+    if board.step == 200:
+        exit()
 
     return my.next_actions
