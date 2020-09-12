@@ -71,21 +71,16 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
     this_attack_vals = defaultdict(lambda: {'v': [0]*MAX_ATTACKERS_TO_SHIP,'target':None})
     for e_ship in attack_point_vals:
         for square in attack_point_vals[e_ship]:
-            #print("square type", type(square).__name__, 'next', )
             dist = manhattan_distance(ship_pos, Point(square[0],square[1]))
             if dist == 0 and board.cells[ ship_pos ].halite > 0:
                 continue
             for i in range(MAX_ATTACKERS_TO_SHIP):
                 attack_ship_square_val = attack_point_vals[e_ship][square] / (dist + EXPECTED_CAPTURE_TIME[i]) / (i+1) * specific_dominance[(square[0], square[1])]
-                #print(i, attack_point_vals[e_ship][square], attack_ship_square_val, this_attack_vals[square]['v'][0])
                 #only assign square to target ship if there were no other ships chasing it
                 if i == 0 and attack_ship_square_val > this_attack_vals[square]['v'][0]:
-                    #print("here!")
                     this_attack_vals[square]['target'] = e_ship
                 if this_attack_vals[square]['target'] == e_ship:
                     this_attack_vals[square]['v'][i] = attack_ship_square_val
-                   # print("here2!")
-        #print("FINAL", this_attack_vals[square])
 
     return this_attack_vals
 def bestAttackTarget(ship_attack_vals, targeted):
@@ -233,7 +228,7 @@ def attackLogic(board, attacking_ships):
     if isPastAttackingTime(board): #begin to attack
         EXPECTED_CAPTURE_TIME[0] = 128
 
-    if board.step >= 80 and OPPONENT_TO_TARGET == None: #choose a potential target if none is selected
+    if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None: #choose a potential target if none is selected
         chooseOpponentToDecimateViaRatio(board)
     if OPPONENT_TO_TARGET != None: #re-evaluate target if the chosen target isn't advantageous enough
         miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in board.players[OPPONENT_TO_TARGET].ships])
@@ -542,8 +537,6 @@ def assignTaskToShips(board, targets, attack_point_vals, general_dominance_map, 
                 ATTACKING_SHIPS[ship.id] = False
                 assigned[mining_target] = True
             assign_log[ship.id] = {'started': 'attack', 'ended_same': ATTACKING_SHIPS[ship.id], 'mine_val': mining_val, 'attack_val': targets['attack'][ship.id]['value']}
-    if print_log and False:
-        print("assign log", assign_log)
     return assign_log
 
 def expectedShipAction(board, other_ship):
@@ -934,8 +927,6 @@ def SpawnShips2(board, augmented, assigned, general_dominance_map, attack_point_
     if len(nsv) > 0:
         log['nsv'] = {'local':nsv, 'tot': tot_aval}
 
-    #nsv = [v if Gamma(board.step, v) >= 500 else 0 for v in nsv]
-    #print("NEW SHIP VALUES:", nsv)
     return (nsv, spawned_points,log)
 GAMMA_VALS = [0]*401
 def Gamma(turn, actual):
@@ -1007,7 +998,6 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
             saved_amount = targets[ship.id]['value'] * max(nearest_dropoff_dist - square_distance,0)
             #we can't save more than our amortized value * turns left in game
             saved_amount = max(saved_amount, targets[ship.id]['value'] * (MAX_STEPS - board.step ) )
-            #print("orig saved", saved_amount)
             total_saved += saved_amount
 
         #We save the total amortized value of the harbor * 1 + STORED HALITE VALUE
@@ -1061,10 +1051,8 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
                         tested[square]['v'] = harborSavings(square)
                     else:
                         tested[square]['v'] = attackerSavings(square)
-                    #tested[square] = True
                 if tested[square]['n'] >= SHIPS_REQUIRED_IN_DROPOFF_DISTANCE or n_yards == 0:
                     harbor_value  = tested[square]['v']
-                    #all_points[str((point_x, point_y))] = harbor_value - dist * targets[ship.id]['value']
                     #harbor value is the sum of the amortized values of things from that point - steps*a_val of the ship that needs to create the dropoff
                     if harbor_value - dist * targets[ship.id]['value'] > mhv:
                         best_harbor = square
@@ -1076,7 +1064,6 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
     else:
         savings, print_total_saved = 0, ''
     if (savings > 500 and n_yards <= n_ships/MAX_SHIP_TO_YARD_RATIO) or ( n_yards== 0 and not FUTURE_DROPOFF):
-    #or Gamma(board.step, mhv/DROPOFF_LIMIT) > 500:
         BEST_NEW_DROPOFF = best_harbor
     else:
         BEST_NEW_DROPOFF = None
@@ -1198,7 +1185,7 @@ def agent(obs, config):
     step_log['dominance'] = dominance_map
     step_log['mining'] = {'order': assignment_order, 'augmented': remap_keys(augmented), 'assigned': remap_keys(assigned),'targets':{}}
     for ship_id in targets['mine']:
-        step_log['mining']['targets'][ship_id] = targets['mine'][ship_id]#,'top3':target_list[ship_id]}
+        step_log['mining']['targets'][ship_id] = targets['mine'][ship_id]
 
     for ship_id in log_dropoffs:
         try:
@@ -1212,10 +1199,7 @@ def agent(obs, config):
     log.append(step_log)
     step_log['returning_list'] = RETURNING.copy()
     step_log['center'] = getBorders(board)
-    print(board.step, step_log['center'])
     PREV_SHIPYARDS = len(my.shipyards)
-    #if board.step == 240:
-    #    with open('log3.txt', 'w') as outfile:
-    #        json.dump(log, outfile)
+    print(board.step)
 
     return my.next_actions
