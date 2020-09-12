@@ -232,7 +232,7 @@ def attackLogic(board, attacking_ships):
         chooseOpponentToDecimateViaRatio(board)
     if OPPONENT_TO_TARGET != None: #re-evaluate target if the chosen target isn't advantageous enough
         miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in board.players[OPPONENT_TO_TARGET].ships])
-            chooseOpponentToDecimateViaRatio(board)
+        chooseOpponentToDecimateViaRatio(board)
 
     #assumes all attack ships have 0 halite
     #populate value of probability of capturing each ship at every point
