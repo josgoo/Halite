@@ -619,9 +619,6 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
         other_ship = board.cells[square_point].ship
         if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
             collision_coef = id_to_num_near_ships[other_ship.player_id]
-            if collision_coef == 0:
-                print('coll coef', collision_coef)
-                raise ValueError("")
             (prob_x, prob_y, prob_other) = expectedShipAction(board, other_ship)
             for (x_move, y_move) in MOVES:
                 danger_point = (x_dif + x_move , y_dif + y_move)
@@ -646,7 +643,9 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
                     # if adjacent enemy can attack us, significantly disincentivize staying still
                     if danger_point == (0, 0):
                         # weighting for any other point can never be more than this
-                        weighting[danger_point] += collision_coef * 1 * -capture_cost
+                        MAX_COLLISION_COEF = 10
+                        weighting[danger_point] += MAX_COLLISION_COEF * 1 * -capture_cost
+                        print('weight', weighting, '| ship', ship.position)
         other_shipyard = board.cells[square_point].shipyard
         if other_shipyard and other_shipyard.player_id != board.current_player_id:
             weighting[(x_dif, y_dif)] += -capture_cost
@@ -691,9 +690,12 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
         directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)]
     #staying still is divided by an additional 2 to account for the additional vec_x/vec_y weighting
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
-    potential_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
-    if not (ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0) and \
-       not (potential_enemy_yard and potential_enemy_yard.player_id != board.current_player_id and vec_x * vec_y == 0): # staying still while attacking mines halite
+    mb_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
+    # enemy yard is obstructing us if it is in the direction we want to move, we want to move strictly vertically or horizontally, and we have another non-dangerous move
+    is_yard_obstruction = mb_enemy_yard and mb_enemy_yard.player_id != board.current_player_id and (vec_x == 0 or vec_y == 0) and any([w == 0 for w in collision_weightings.values()])
+    # staying still while attacking mines halite
+    is_attack_force_mine = ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0
+    if not (is_attack_force_mine) and not (is_yard_obstruction):
         directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
 
     return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
