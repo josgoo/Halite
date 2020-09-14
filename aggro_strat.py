@@ -690,7 +690,7 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
     potential_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
     if not (ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0) and \
-       not (potential_enemy_yard and potential_enemy_yard.player_id != board.current_player_id): # staying still while attacking mines halite
+       not (potential_enemy_yard and potential_enemy_yard.player_id != board.current_player_id and vec_x * vec_y == 0): # staying still while attacking mines halite
         directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
 
     return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
@@ -894,7 +894,7 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
         if danger_return:
             STORED_HALITE_VALUE = min(MAX_STORED_HALITE_VALUE, STORED_HALITE_VALUE + STORED_HALITE_INCR)
         n_yards = len(board.current_player.shipyards)
-        if ( (n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or ( n_yards == 0 and createFirstDropoff(board, targets) )\
+        if ((n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or (n_yards == 0 and createFirstDropoff(board, targets))\
                 or end_game_return or danger_return) and nearest_dropoff['point'] != None:
             #reassign target of the ship
             dropoff_targets[ship.id] = {'point':nearest_dropoff['point'], 'value': 1, 'halite': 0, 'mining_time': 0, 'mined':0, 'next_val': targets[ship.id]['next_val']}
