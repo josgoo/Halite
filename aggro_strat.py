@@ -71,8 +71,8 @@ HAS_DECIMATED = -1
 BORDERS = {}
 
 log = []
-logging_mode = False
-print_log = False
+logging_mode = True
+print_log = True
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
@@ -587,51 +587,68 @@ def expectedShipAction(board, other_ship):
     prob_x = prob_x + prob_other if prob_x >= 0 else prob_x - prob_other
     prob_y = (enemy_vector[1] / STORED_MOVES) * TAU  # + (1-confidence) * random move in that direction
     prob_y = prob_y + prob_other if prob_y >= 0 else prob_y - prob_other
-    return(prob_x, prob_y, prob_other)
-def factorCollisionsIntoActions(board, ship, capture_cost):
+    return (prob_x, prob_y, prob_other)
+
+def updateDanger(board):
     global DANGER
-    weighting = defaultdict(lambda: 0)
-    DANGER[ship.id][board.step% len(DANGER[ship.id])] = 0
     size = board.configuration.size
-    COLLISION_COEF = 5 #Giving the chance they move into a territory to collide with us as more likely
+    for ship in board.current_player.ships:
+        DANGER[ship.id][board.step % len(DANGER[ship.id])] = 0
+        for (x_dif, y_dif) in PLUS_SHAPE:
+            square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
+            other_ship = board.cells[square_point].ship
+            if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
+                if (x_dif, y_dif) in MOVES:
+                    DANGER[ship.id][board.step % len(DANGER[ship.id])] += 2
+                else:
+                    DANGER[ship.id][board.step % len(DANGER[ship.id])] += 1
+
+def factorCollisionsIntoActions(board, ship, capture_cost):
+    weighting = defaultdict(lambda: 0)
+    size = board.configuration.size
+    # compute number of enemy ships on each team in PLUS around ship
+    id_to_num_near_ships = defaultdict(lambda: 0)
     for (x_dif, y_dif) in PLUS_SHAPE:
         square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
         other_ship = board.cells[square_point].ship
-        #TODO: ignores our ships, not sure how exactly to include it
-        if other_ship and other_ship.player_id != board.current_player_id:
+        if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
+            id_to_num_near_ships[other_ship.player_id] += 1
+    
+    for (x_dif, y_dif) in PLUS_SHAPE:
+        square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
+        other_ship = board.cells[square_point].ship
+        if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
+            collision_coef = id_to_num_near_ships[other_ship.player_id]
             (prob_x, prob_y, prob_other) = expectedShipAction(board, other_ship)
-            if other_ship.halite <= ship.halite:
-                for (x_move, y_move) in MOVES:
-                    danger_point = (x_dif + x_move , y_dif + y_move)
-                    # make our shipyards never dangerous
-                    actual_danger_point = Point((ship.position.x + danger_point[0]) % size, (ship.position.y + danger_point[1]) % size)
-                    if board.cells[actual_danger_point].shipyard and board.cells[actual_danger_point].shipyard.player_id == board.current_player_id:
-                        continue
+            for (x_move, y_move) in MOVES:
+                danger_point = (x_dif + x_move , y_dif + y_move)
+                # make our shipyards never dangerous
+                actual_danger_point = Point((ship.position.x + danger_point[0]) % size, (ship.position.y + danger_point[1]) % size)
+                if board.cells[actual_danger_point].shipyard and board.cells[actual_danger_point].shipyard.player_id == board.current_player_id:
+                    continue
 
-                    if danger_point in MOVES:
-                        if (x_dif, y_dif) in MOVES:
-                            DANGER[ship.id][board.step%2] += 2
+                if danger_point in MOVES:
+                    positive_prob_x = x_move * prob_x #these are positive when the other ship's next move is
+                    positive_prob_y = y_move * prob_y #in the same direction as it was previously going
+                    if positive_prob_x > 0:
+                        weighting[danger_point] += collision_coef * positive_prob_x * -capture_cost
+                    elif positive_prob_y > 0:
+                        weighting[danger_point] += collision_coef * positive_prob_y * -capture_cost
+                    else: #Expectation the ship stays still or moves in the opposite direction -> prob_other
+                        if other_ship.halite == 0 and board.cells[other_ship.position].halite > 0 and (x_move,y_move) == (0,0):
+                            weighting[danger_point] += prob_other * -capture_cost #lighter penalty because they will most likely not stay still
                         else:
-                            DANGER[ship.id][board.step%2] += 1
-                        positive_prob_x = x_move * prob_x #these are positive when the other ship's next move is
-                        positive_prob_y = y_move * prob_y #in the same direction as it was previously going
-                        if weighting[other_ship.id] == 0:
-                            weighting[other_ship.id] = [( (int(x_move), int(y_move)), (int(x_dif),int(y_dif)) , prob_x, prob_y)]
-                        else:
-                            weighting[other_ship.id].append( ( (int(x_move), int(y_move)), (int(x_dif),int(y_dif)) , prob_x, prob_y) )
-                        if positive_prob_x > 0:
-                            weighting[danger_point] += COLLISION_COEF * positive_prob_x * -capture_cost
-                        elif positive_prob_y > 0:
-                            weighting[danger_point] += COLLISION_COEF * positive_prob_y * -capture_cost
-                        else: #Expectation the ship stays still or moves in the opposite direction -> prob_other
-                            if other_ship.halite == 0 and board.cells[ other_ship.position ].halite > 0 and (x_move,y_move) == (0,0):
-                                weighting[danger_point] += prob_other * -capture_cost #lighter penalty because they will most likely not stay still
-                            else:
-                                weighting[danger_point] += COLLISION_COEF * prob_other * -capture_cost
+                            weighting[danger_point] += collision_coef * prob_other * -capture_cost
+
+                    # if adjacent enemy can attack us, significantly disincentivize staying still
+                    if danger_point == (0, 0):
+                        # weighting for any other point can never be more than this
+                        weighting[danger_point] += collision_coef * 1 * -capture_cost
         other_shipyard = board.cells[square_point].shipyard
         if other_shipyard and other_shipyard.player_id != board.current_player_id:
-            weighting[(x_dif, y_dif)] += -capture_cost #TODO: maybe add value of destroying shipyard
+            weighting[(x_dif, y_dif)] += -capture_cost
     return weighting
+
 def findVectorComponents(board, start, end):
     if start == end:
         return (0,0)
@@ -652,8 +669,9 @@ def findVectorComponents(board, start, end):
     return (vec_x, vec_y)
 def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
     start = ship.position
+    size = board.configuration.size
     directions = {}
-    (vec_x, vec_y) = findVectorComponents(board,start, end)
+    (vec_x, vec_y) = findVectorComponents(board, start, end)
     collision_cost = 500 + ship.halite + amortized_value - gamma_pdf(board.step)
     collision_weightings = factorCollisionsIntoActions(board, ship, collision_cost)
     if vec_x != 0:
@@ -670,10 +688,12 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
         directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)]
     #staying still is divided by an additional 2 to account for the additional vec_x/vec_y weighting
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
-    if not (ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0): # staying still while attacking mines halite
+    potential_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
+    if not (ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0) and \
+       not (potential_enemy_yard and potential_enemy_yard.player_id != board.current_player_id): # staying still while attacking mines halite
         directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
 
-    return (sorted(directions,key=lambda k: directions[k], reverse=True), directions, collision_weightings)
+    return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
 
 def assignProtectors(board, new_ship_avalue):
     PROTECT = defaultdict(lambda: None)
@@ -1217,6 +1237,11 @@ def agent(obs, config):
     (general_dominance_map, dominance_map) = createDominanceMap(board, ships)
     if logging_mode:
         end_dom = time.time()
+
+    # update danger scores for ships
+    updateDanger(board)
+    if logging_mode:
+        end_danger = time.time()
     
     # setup for attacking/mining logic
     attack_ships = []
@@ -1314,7 +1339,7 @@ def agent(obs, config):
     if logging_mode and print_log:
         log_str = "turn: {}\nattacking ships: {}\nmining ships: {}\nattack_target: {}\nhas_decimated: {}\n" \
                   "best new dropoff: {}\nfuture dropoff: {}\n" \
-                  "setup time: {}\ndominance_map time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
+                  "setup time: {}\ndominance_map time: {}\ndanger time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
                   "spawning_logic time: {}\ndecide_create_dropoff time: {}\ndecide_return time: {}\n" \
                   "protect time: {}\nprioritize time: {}\nassign_moves time: {}\nassign_tasks time: {}\nextra_logging time: {}\n"
         print(log_str.format(board.step,
@@ -1326,7 +1351,8 @@ def agent(obs, config):
                              FUTURE_DROPOFF if FUTURE_DROPOFF != None else 'None',
                              end_setup - start,
                              end_dom - end_setup,
-                             end_attack - end_dom,
+                             end_danger - end_dom,
+                             end_attack - end_danger,
                              end_mining - end_attack,
                              end_spawn - end_mining,
                              end_dropoff - end_spawn,
