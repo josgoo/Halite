@@ -12,8 +12,6 @@ PLUS_SHAPE_BLUR = {(2,0): 0.04, (-2,0): 0.04, (1,1): 0.08, (0,2): 0.04, (1,-1): 
 (-1,-1):0.08, (-1,1): 0.08, (1,0):0.24,(0,1):0.24,(-1,0):0.24,(0,-1):0.24,(0,0):1}
 MOVES = [ (1,0), (-1,0), (0,1), (0,-1), (0,0) ] #Direct moves a ship can make
 DIR_TO_ACTION = {(1,0): ShipAction.EAST, (-1,0): ShipAction.WEST, (0,1):ShipAction.NORTH, (0,-1): ShipAction.SOUTH, (0,0):None} #Direction to action dictionary
-MAX_INT = np.iinfo(np.int16).max
-MIN_INT = np.iinfo(np.int16).min
 
 NEG_AMORT_VALS_EXPLICIT = [None, 2.341, 3.166, 3.751, 4.217, 4.607, 4.946, 5.246, 5.516, 5.762, 5.988, 6.198, 6.393, 6.576, 6.749, 6.912, 7.066, 7.213, 7.354, 7.488, 7.616, 7.74]
 
@@ -30,9 +28,8 @@ SHIP_SPAWN_LIMIT = 370
 DISTANCE_THRESHOLD = 6 #How far away we look at points to find dropoffs
 DROPOFF_VISION = 4 #Distance a dropoff can look
 DROPOFF_LIMIT = 3 #How many ships we pretend to spawn to pick best dropoff location
-MAX_SHIP_TO_YARD_RATIO = 11#15#9 #TODO: i wanna make it 13
-DISTANCE_BETWEEN_DROPOFFS = 6
-MAX_DISTANCE_AWAY_FROM_DROPOFF = 9
+MAX_SHIP_TO_YARD_RATIO = 11#15#9
+DISTANCE_BETWEEN_DROPOFFS = 7
 SHIPS_REQUIRED_IN_DROPOFF_DISTANCE = 2
 STORED_MOVES = 3 #How many previous enemy positions we store
 STORED_ITER = 0 #counter that keeps track of past moves, wraps around (0-STORED_MOVES)
@@ -44,15 +41,9 @@ MAX_STORED_HALITE_VALUE = 0.75
 PROTECT_THRESHOLD = 250
 ESHIP_VAL = 200#125
 MAX_ATTACKERS_TO_SHIP = 6
-EXPECTED_CAPTURE_TIME = [MAX_INT,64,16,4,2,1]
+EXPECTED_CAPTURE_TIME = [float('inf'),64,16,4,2,1]
 OPPONENT_ATTACK_MIN_SHIPS = 3 #Maybe change to somehow only count ships in starting quadrant
 WITHIN_BOUNDARY_MULTIPLIER = 4
-ENDGAME_STEP = 380
-CHASE_DANGER_THRESH = 6 # how many "danger points" necessary to consider being chased
-DISALLOW_SHIP_SPAWN_STEP = 270
-IGNORE_BORDER_MULTIPLIER_STEP = 330 # what step we should no longer add a multiplier to being within our area border
-RUN_AWAY_SHIP_THRESH = 3 # if we have this number of ships or less in endgame, dont ever convert to dropoff
-ENDGAME_RETURN_BUFFER = 5
 
 # global variables
 FUTURE_DROPOFF = None
@@ -69,13 +60,13 @@ shipyard_occupied = defaultdict(lambda: defaultdict(lambda: None)) #ship schedul
 NEAREST_DROPOFF = {}
 ATTACKING_SHIPS = defaultdict(lambda: False)
 DANGER = defaultdict(lambda: [0,0,0])
-CENTER, CENTER_VAL = None, MAX_INT
+CENTER, CENTER_VAL = None, float('inf')
 HAS_DECIMATED = -1
 BORDERS = {}
 
 log = []
-logging_mode = True
-print_log = True
+logging_mode = False
+print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
@@ -170,11 +161,6 @@ def chooseOpponentToDecimateViaRatio(board):
 
     OPPONENT_TO_TARGET = max_opponent
 
-def getStartingQuadrantCenter(board):
-    me = board.current_player.id
-    quadrant_centers = [Point(5, 15), Point(15, 15), Point(5, 5), Point(15, 5)]
-    return quadrant_centers[me]
-
 def getBorders(board):
         if HAS_DECIMATED >= 0:
             me = board.current_player.id
@@ -227,12 +213,11 @@ def withinBorders(board, point):
     if tly < bry and (tly < point.y < bry):
         return False
     return True
-
-def shouldApplyWithinBorderMultiplier(board, point):
-    return isPastAttackingTime(board) and \
-           board.step < IGNORE_BORDER_MULTIPLIER_STEP and \
-           OPPONENT_TO_TARGET == None and \
-           withinBorders(board, point)
+def distanceDiscount(board, point):
+    return 1
+    nearest_dropoff = nearestDropoff(board, point)
+    discount = float( np.power(.97, nearest_dropoff['dist']) )
+    return discount
 
 def isPastAttackingTime(board):
     return board.step >= 80 or len(board.current_player.ships) >= 16
@@ -246,21 +231,15 @@ def attackLogic(board, attacking_ships):
     attack_point_vals = {}
     size = board.configuration.size
     
-    global EXPECTED_CAPTURE_TIME, PREV_ATTACK_TARGETS, OPPONENT_TO_TARGET, CENTER, CENTER_VAL
+    global EXPECTED_CAPTURE_TIME, PREV_ATTACK_TARGETS
     if isPastAttackingTime(board): #begin to attack
         EXPECTED_CAPTURE_TIME[0] = 128
-    
-    n_yards = len(board.current_player.shipyards)
-    if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and n_yards > 0: # choose a potential target if none is selected
+
+    if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None: #choose a potential target if none is selected
         chooseOpponentToDecimateViaRatio(board)
     if OPPONENT_TO_TARGET != None: #re-evaluate target if the chosen target isn't advantageous enough
         miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in board.players[OPPONENT_TO_TARGET].ships])
         chooseOpponentToDecimateViaRatio(board)
-    # if we are attacking someone but all of our shipyards get destroyed, stop attacking and retreat to original quadrant #TODO: might want better retreat area idea
-    if isPastAttackingTime(board) and OPPONENT_TO_TARGET != None and n_yards == 0:
-        OPPONENT_TO_TARGET = None
-        CENTER = getStartingQuadrantCenter(board)
-        CENTER_VAL = MAX_INT
 
     #assumes all attack ships have 0 halite
     #populate value of probability of capturing each ship at every point
@@ -293,7 +272,7 @@ def attackLogic(board, attacking_ships):
                         attack_point = ( (possible_point.x + rel_x)%size , (possible_point.y + rel_y)%size )
                         capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
                         ap = Point(attack_point[0], attack_point[1])
-                        within_multiplier = WITHIN_BOUNDARY_MULTIPLIER if shouldApplyWithinBorderMultiplier(board, ap) else 1
+                        within_multiplier = WITHIN_BOUNDARY_MULTIPLIER * distanceDiscount(board, ap) if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and withinBorders(board, ap) else 1
                         attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
 
                         if logging_mode:
@@ -356,7 +335,6 @@ def attackLogic(board, attacking_ships):
         attack_log['n_attacking'] = N_ATTACKING
 
     no_targets_assigned = []
-    attack_returning_order = []
     global ATTACKING_SHIPS, FUTURE_DROPOFF
     for ship in attacking_ships:
         if ship.id not in attack_targets:
@@ -368,7 +346,7 @@ def attackLogic(board, attacking_ships):
                     attack_targets[ship.id] = {'point':nearest_dropoff['point'], 'value': 1, 'target': None}
                     RETURNING[ship.id] = True
                     #returning ships have priority in attack order
-                    attack_returning_order.append(ship.id)
+                    attack_order.insert(0, ship.id)
                     nearest_shipyard = board.cells[ nearest_dropoff['point'] ].shipyard
                     if nearest_shipyard:
                         shipyard_occupied[ nearest_shipyard.id  ][board.step + nearest_dropoff['dist']] = ship.id
@@ -382,13 +360,13 @@ def attackLogic(board, attacking_ships):
                 no_targets_assigned.append(ship)
                 ATTACKING_SHIPS[ship.id] = False
     PREV_ATTACK_TARGETS = attack_targets
-    return (attack_targets, targeted, attack_point_vals, attack_returning_order + attack_order, no_targets_assigned, attack_log)
+    return (attack_targets, targeted, attack_point_vals, attack_order, no_targets_assigned, attack_log)
 def createDominanceMap(board, ships):
     size = board.configuration.size
-    def updateGaussianBlur(ship_pos, ship_halite , no_enemy_prob, thresh=MAX_INT, attacking=False):
+    def updateGaussianBlur(ship_pos, ship_halite , no_enemy_prob, thresh=float('inf'), attacking=False):
         for (x_dif, y_dif) in PLUS_SHAPE + [(0,0)]:
             square_point = ( int( (ship_pos.x + x_dif)%size ), int( (ship_pos.y + y_dif)%size ) )
-            if thresh != MAX_INT and ship_halite <= thresh and (x_dif, y_dif) in MOVES and not attacking:
+            if thresh != float('inf') and ship_halite <= thresh and (x_dif, y_dif) in MOVES and not attacking:
                 no_enemy_prob[square_point] = 0 #if there is a lighter ship in the specific case within 1 move (count it as just as dangerous)
             elif ship_halite < thresh: #Always true for general case
                 no_enemy_prob[square_point] *= (1- PLUS_SHAPE_BLUR[(x_dif,y_dif)]) #Probability no enemy enters the square
@@ -399,7 +377,7 @@ def createDominanceMap(board, ships):
             dominance_map = updateGaussianBlur(ship.position, ship.halite, dominance_map)
     for shipyard in board.shipyards.values():
         if shipyard.player_id != board.current_player_id:
-             dominance_map = updateGaussianBlur(shipyard.position, MAX_INT, dominance_map, thresh=0)
+             dominance_map = updateGaussianBlur(shipyard.position, float('inf'), dominance_map, thresh=0)
     for entry in dominance_map:
         dominance_map[entry] = float( 1 - ( (1 - dominance_map[entry]) * GENERAL_DOWNWEIGHT) ) #The probability any enemy enters the square
 
@@ -415,7 +393,7 @@ def createDominanceMap(board, ships):
                 specific_dominance_map[ship.id] = updateGaussianBlur(enemy_ship.position,enemy_ship.halite, specific_dominance_map[ship.id], thresh=ship.halite, attacking =  is_attacking)
         for shipyard in board.shipyards.values():
             if shipyard.player_id != board.current_player_id:
-                 specific_dominance_map[ship.id] = updateGaussianBlur(shipyard.position, MAX_INT, specific_dominance_map[ship.id], thresh=ship.halite, attacking =  is_attacking)
+                 specific_dominance_map[ship.id] = updateGaussianBlur(shipyard.position, float('inf'), specific_dominance_map[ship.id], thresh=ship.halite, attacking =  is_attacking)
         for entry in dominance_map:
             #1 - The probability at least 1 smaller enemy is in the area * downweight + general downweighting
             #Symbolizes value lost from dying (smaller ship) + value lost from them eating halite in the area (general)
@@ -446,7 +424,7 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
                 val = -((1 - 0.75**mining_time) * H) / (dist + mining_time)
                 if dominance:
                     val *= dominance[(point_x, point_y)]
-                if shouldApplyWithinBorderMultiplier(board, target):
+                if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and withinBorders(board, target):
                     val *= WITHIN_BOUNDARY_MULTIPLIER
                 if board.step < 30:
                     starting_locations = [Point(5,15), Point(15,15), Point(5,5), Point(15,5)]
@@ -457,6 +435,8 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
             
             def find_opt_mining_time(manhattan_dist):
                 # Not rounding top_val to nearest integer - may additionally account for uncertainty
+                # whats the point of mining limit?
+                #mining_limit = min(MAX_STEPS - board.step - 2 * manhattan_dist, 15) # 15 is an approximation for running nearestDropoff
                 if manhattan_dist == 0:
                     best_mining_time = 1
                 else:
@@ -596,69 +576,46 @@ def expectedShipAction(board, other_ship):
     prob_x = prob_x + prob_other if prob_x >= 0 else prob_x - prob_other
     prob_y = (enemy_vector[1] / STORED_MOVES) * TAU  # + (1-confidence) * random move in that direction
     prob_y = prob_y + prob_other if prob_y >= 0 else prob_y - prob_other
-    return (prob_x, prob_y, prob_other)
-
-def updateDanger(board):
-    global DANGER
-    size = board.configuration.size
-    for ship in board.current_player.ships:
-        DANGER[ship.id][board.step % len(DANGER[ship.id])] = 0
-        for (x_dif, y_dif) in PLUS_SHAPE:
-            square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
-            other_ship = board.cells[square_point].ship
-            if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
-                if (x_dif, y_dif) in MOVES:
-                    DANGER[ship.id][board.step % len(DANGER[ship.id])] += 2
-                else:
-                    DANGER[ship.id][board.step % len(DANGER[ship.id])] += 1
-
+    return(prob_x, prob_y, prob_other)
 def factorCollisionsIntoActions(board, ship, capture_cost):
+    global DANGER
     weighting = defaultdict(lambda: 0)
+    DANGER[ship.id][board.step% len(DANGER[ship.id])] = 0
     size = board.configuration.size
-    # compute number of enemy ships on each team in PLUS around ship
-    id_to_num_near_ships = defaultdict(lambda: 0)
+    COLLISION_COEF = 5 #Giving the chance they move into a territory to collide with us as more likely
     for (x_dif, y_dif) in PLUS_SHAPE:
-        square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
+        square_point = Point( (ship.position.x + x_dif)%size , (ship.position.y + y_dif)%size)
         other_ship = board.cells[square_point].ship
-        if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
-            id_to_num_near_ships[other_ship.player_id] += 1
-    
-    for (x_dif, y_dif) in PLUS_SHAPE:
-        square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
-        other_ship = board.cells[square_point].ship
-        if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
-            collision_coef = id_to_num_near_ships[other_ship.player_id] + 3     #want this to be closer than before
+        #TODO: ignores our ships, not sure how exactly to include it
+        if other_ship and other_ship.player_id != board.current_player_id:
             (prob_x, prob_y, prob_other) = expectedShipAction(board, other_ship)
-            for (x_move, y_move) in MOVES:
-                danger_point = (x_dif + x_move , y_dif + y_move)
-                # make our shipyards never dangerous
-                actual_danger_point = Point((ship.position.x + danger_point[0]) % size, (ship.position.y + danger_point[1]) % size)
-                if board.cells[actual_danger_point].shipyard and board.cells[actual_danger_point].shipyard.player_id == board.current_player_id:
-                    continue
-
-                if danger_point in MOVES:
-                    positive_prob_x = x_move * prob_x #these are positive when the other ship's next move is
-                    positive_prob_y = y_move * prob_y #in the same direction as it was previously going
-                    if positive_prob_x > 0:
-                        weighting[danger_point] += collision_coef * positive_prob_x * -capture_cost
-                    elif positive_prob_y > 0:
-                        weighting[danger_point] += collision_coef * positive_prob_y * -capture_cost
-                    else: #Expectation the ship stays still or moves in the opposite direction -> prob_other
-                        if other_ship.halite == 0 and board.cells[other_ship.position].halite > 0 and (x_move,y_move) == (0,0):
-                            weighting[danger_point] += prob_other * -capture_cost #lighter penalty because they will most likely not stay still
+            if other_ship.halite <= ship.halite:
+                for (x_move, y_move) in MOVES:
+                    danger_point = ( x_dif + x_move , y_dif + y_move )
+                    if danger_point in MOVES:
+                        if (x_dif, y_dif) in MOVES:
+                            DANGER[ship.id][board.step%2] += 2
                         else:
-                            weighting[danger_point] += collision_coef * prob_other * -capture_cost
-
-                    # if adjacent enemy can attack us, significantly disincentivize staying still
-                    if danger_point == (0, 0):
-                        # weighting for any other point can never be more than this, means enemy ship in every PLUS square around us
-                        MAX_COLLISION_COEF = len(PLUS_SHAPE)
-                        weighting[danger_point] += MAX_COLLISION_COEF * 1 * -capture_cost
+                            DANGER[ship.id][board.step%2] += 1
+                        positive_prob_x = x_move * prob_x #these are positive when the other ship's next move is
+                        positive_prob_y = y_move * prob_y #in the same direction as it was previously going
+                        if weighting[other_ship.id] == 0:
+                            weighting[other_ship.id] = [( (int(x_move), int(y_move)), (int(x_dif),int(y_dif)) , prob_x, prob_y)]
+                        else:
+                            weighting[other_ship.id].append( ( (int(x_move), int(y_move)), (int(x_dif),int(y_dif)) , prob_x, prob_y) )
+                        if positive_prob_x > 0:
+                            weighting[danger_point] += COLLISION_COEF * positive_prob_x * -capture_cost
+                        elif positive_prob_y > 0:
+                            weighting[danger_point] += COLLISION_COEF * positive_prob_y * -capture_cost
+                        else: #Expectation the ship stays still or moves in the opposite direction -> prob_other
+                            if other_ship.halite == 0 and board.cells[ other_ship.position ].halite > 0 and (x_move,y_move) == (0,0):
+                                weighting[danger_point] += prob_other * -capture_cost #lighter penalty because they will most likely not stay still
+                            else:
+                                weighting[danger_point] += COLLISION_COEF * prob_other * -capture_cost
         other_shipyard = board.cells[square_point].shipyard
         if other_shipyard and other_shipyard.player_id != board.current_player_id:
-            weighting[(x_dif, y_dif)] += -capture_cost
+            weighting[(x_dif, y_dif)] += -capture_cost #TODO: maybe add value of destroying shipyard
     return weighting
-
 def findVectorComponents(board, start, end):
     if start == end:
         return (0,0)
@@ -679,9 +636,8 @@ def findVectorComponents(board, start, end):
     return (vec_x, vec_y)
 def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
     start = ship.position
-    size = board.configuration.size
     directions = {}
-    (vec_x, vec_y) = findVectorComponents(board, start, end)
+    (vec_x, vec_y) = findVectorComponents(board,start, end)
     collision_cost = 500 + ship.halite + amortized_value - gamma_pdf(board.step)
     collision_weightings = factorCollisionsIntoActions(board, ship, collision_cost)
     if vec_x != 0:
@@ -698,16 +654,10 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
         directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)]
     #staying still is divided by an additional 2 to account for the additional vec_x/vec_y weighting
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
-    mb_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
-    # enemy yard is obstructing us if it is in the direction we want to move, we want to move strictly vertically or horizontally, and we have another non-dangerous move
-    is_yard_obstruction = mb_enemy_yard and mb_enemy_yard.player_id != board.current_player_id and (vec_x == 0 or vec_y == 0) and any([w == 0 for w in collision_weightings.values()])
-    # staying still while attacking mines halite
-    is_attack_force_mine = ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0
-    if not (is_attack_force_mine) and not (is_yard_obstruction):
+    if not (ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0): # staying still while attacking mines halite
         directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
 
-    return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
-
+    return ( sorted(directions,key= lambda k: directions[k], reverse=True), directions, collision_weightings)
 def assignProtectors(board, new_ship_avalue):
     PROTECT = defaultdict(lambda: None)
     if len(board.current_player.ships) >= 16:
@@ -716,26 +666,6 @@ def assignProtectors(board, new_ship_avalue):
             PROTECT[shipyard.id] = protector.id if protector else None
     protect_log = {'nsv_a': new_ship_avalue, 'Gamma': Gamma(board.step, new_ship_avalue)}
     return (PROTECT, protect_log)
-
-def prioritizeShipOrder(board, mining_order, attacking_order):
-    global RETURNING, DANGER, logging_mode
-    def split_returning_ships(ship_order):
-        returning = []
-        not_returning = []
-        for ship_id in ship_order:
-            if RETURNING[ship_id]:
-                returning.append(ship_id)
-            else:
-                not_returning.append(ship_id)
-        return returning, not_returning
-
-    mine_returning, mine_not_returning = split_returning_ships(mining_order)
-    attack_returning, attack_not_returning = split_returning_ships(attacking_order)
-
-    # we want returning ships to have priority in order of cargo
-    returning = sorted(mine_returning + attack_returning, key=lambda k: board.ships[k].halite, reverse=True)
-    return returning + mine_not_returning + attack_not_returning
-
 def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, PROTECT):
     global RETURNING, DANGER, logging_mode
     size = board.configuration.size
@@ -745,28 +675,29 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         val = targets['attack'][ship.id]['value'] if ATTACKING_SHIPS[ship.id] else targets['mine'][ship.id]['value']
 
         if ship.position == target and space_taken[ship.position] != False and space_taken[ship.position] != 'spawn'\
-                and ATTACKING_SHIPS[space_taken[ship.position]['id']] == ATTACKING_SHIPS[ship.id]:
+                and ATTACKING_SHIPS[ space_taken[ship.position]['id'] ] == ATTACKING_SHIPS[ ship.id ]:
             target = space_taken[ship.position]['target']
         (actions, values, collisions) = findDesiredAction(board, ship, target, val, can_mine = not RETURNING[ship_id] and not ATTACKING_SHIPS[ship_id])
+        action_copy = actions.copy()
         ship_point = ship.position
         action_dict['directions'][ship_id] = remap_keys(values)
         action_dict['collisions'][ship_id] = remap_keys(collisions)
-        idx = 0
         while True:
-            top_direction = actions[idx]
-            idx += 1
-            new_point = Point((ship_point.x + top_direction[0]) % size, (ship_point.y + top_direction[1]) % size)
-            if not space_taken[new_point] or isTimeToEndgameReturn(board, ship):
+            top_direction = actions.pop(0)
+            new_point = Point( (ship_point.x + top_direction[0]) % size, (ship_point.y + top_direction[1])%size )
+            if not space_taken[new_point] or board.step > 380:
                 break
             if space_taken[new_point] == 'spawn': #Undo the spawning of the ship
                 board.cells[new_point].shipyard.next_action = None
                 break
-            if len(actions) == idx: #If this happens we are fucked, two friendly ships are colliding
-                for force_dir in actions:
-                    force_point = Point((ship_point.x + force_dir[0]) % size, (ship_point.y + force_dir[1]) % size)
+            if len(actions) == 0: #If this happens we are fucked, two friendly ships are colliding
+                Fixed = False
+                for force_dir in action_copy:
+                    force_point = Point( (ship_point.x + force_dir[0]) % size, (ship_point.y + force_dir[1])%size )
                     alternative = space_taken[force_point]['alternative']
                     #If a blocking ship can move somewhere else
                     if alternative['point'] and not space_taken[ alternative['point'] ]:
+                        Fixed = True
                         #Move the blocking ship to the alternative spot
                         blocking_ship = board.ships[ space_taken[force_point]['id'] ]
                         blocking_ship.next_action = DIR_TO_ACTION[ alternative['dir'] ]
@@ -778,9 +709,9 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
                         break
                 break
         #If there are more options than the chosen one left
-        if len(actions) > idx:
-            alt_dir = actions[idx]
-            alt_point = Point((ship_point.x + alt_dir[0]) % size, (ship_point.y + alt_dir[1]) % size)
+        if len(actions) > 0:
+            alt_dir = actions.pop(0)
+            alt_point = Point( (ship_point.x + alt_dir[0]) % size, (ship_point.y + alt_dir[1])%size )
         else:
             alt_dir, alt_point = None, None
         space_taken[new_point] = {'target':target, 'id':ship.id, 'alternative': {'point': alt_point, 'dir': alt_dir}}
@@ -788,19 +719,13 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         action_dict['actions'][ship_id] = top_direction
         global FUTURE_DROPOFF
         h = board.current_player.halite + ship.halite
-        # failsafe 1: if a heavy ship can't reach a dropoff before game ends, it should convert
-        # failsafe 2: if a heavy ship is in grave danger and will probably die, it should convert
-        if ((FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF) and h >= 500) or \
-            (board.step >= 399 and ship.halite >= 500 and not board.cells[new_point].shipyard) or \
-            (ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= 6):
-            # failsafe 3: if we are in endgame and have few ships, never spawn a shipyard and run away instead
-            if board.step <= ENDGAME_STEP or len(board.current_player.ships) >= RUN_AWAY_SHIP_THRESH:
-                ship.next_action = ShipAction.CONVERT
-                FUTURE_DROPOFF = None
-                space_taken[new_point] = False
-                targets['mine'][ship_id] = {'point':ship.position, 'value':1, 'halite':0, 'mining_time':0, 'mined': 0, 'next_val':0}
-                space_taken[ship_point] = {'target': targets['mine'][ship_id], 'id': ship.id, 'alternative': {'point':None, 'dir': None}}
-                action_dict['actions'][ship_id] = 'convert'
+        if (FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF) and h >= 500:
+            ship.next_action = ShipAction.CONVERT
+            FUTURE_DROPOFF = None
+            space_taken[new_point] = False
+            targets['mine'][ship_id] = {'point':ship.position, 'value':1, 'halite':0, 'mining_time':0, 'mined': 0, 'next_val':0}
+            space_taken[ship_point] = {'target': targets['mine'][ship_id], 'id': ship.id, 'alternative': {'point':None, 'dir': None}}
+            action_dict['actions'][ship_id] = 'convert'
 
         elif RETURNING[ship_id]: #reset returning for the ship if false
             for shipyard in board.current_player.shipyards:
@@ -823,18 +748,12 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
 def findAllNearestDists(board):
     global NEAREST_DROPOFF, CENTER, CENTER_VAL
     NEAREST_DROPOFF = {}
-    CENTER, CENTER_VAL = None, MAX_INT
+    CENTER, CENTER_VAL = None, float('inf')
     size = board.configuration.size
     for x in range(size):
         for y in range(size):
             square = Point(x,y)
             nearestDropoff(board, square)
-
-def isTimeToEndgameReturn(board, ship):
-    near_dropoff = nearestDropoff(board, ship.position)
-    if not near_dropoff['point']:
-        return False
-    return board.step >= 400 - (near_dropoff['dist'] + ENDGAME_RETURN_BUFFER)
 
 def returnMiningShips(board, targets, nsv, dominance_map, targeted):
     global RETURNING, shipyard_occupied, STORED_HALITE_VALUE, STORED_HALITE_INCR, FUTURE_DROPOFF, logging_mode
@@ -843,10 +762,10 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
         def turns_needed(needed_halite):
             if needed_halite == 0:
                 return 0
-            min_turns_to_fund_ship = MAX_INT
+            min_turns_to_fund_ship = float('inf')
             for o_ship in board.current_player.ships:
                 if o_ship.id != ship.id and not RETURNING[o_ship.id] and not ATTACKING_SHIPS[o_ship.id] and targets[o_ship.id]['value'] > 0:
-                    turns_mining = np.ceil(max(needed_halite - o_ship.halite, 0) / targets[o_ship.id]['value'])
+                    turns_mining = np.ceil( max(needed_halite - o_ship.halite, 0) / targets[o_ship.id]['value'] )
                     return_from_spot = targets[o_ship.id]['point'] if turns_mining > 0 else o_ship.position
                     turns_to_fund_ship =  turns_mining + nearestDropoff(board, return_from_spot)['dist']
                     min_turns_to_fund_ship = min(min_turns_to_fund_ship, turns_to_fund_ship)
@@ -863,10 +782,10 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
             log['stay'] = staying_turns
             log['mine'] = mining_turns
 
-        turn_value = ( Gamma(board.step + returning_turns, new_ship_avalue) - Gamma(board.step + min(staying_turns, mining_turns), new_ship_avalue) )
+        turn_value= ( Gamma(board.step + returning_turns, new_ship_avalue) - Gamma(board.step + min(staying_turns, mining_turns), new_ship_avalue) )
         return (turn_value/2, log)
 
-    sorted_halite_order = sorted(board.current_player.ships, key=lambda k: k.halite, reverse=True)
+    sorted_halite_order = sorted(board.current_player.ships, key= lambda k: k.halite, reverse=True)
     curr_halite = board.current_player.halite
     for ship in board.current_player.ships:
         if RETURNING[ship.id]:
@@ -910,12 +829,13 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
             dropoff_log[ship.id] = {'value': return_value, 'cost': return_cost, 'a_val':targets[ship.id]['value'] ,'curr_H':curr_halite, 'H':ship.halite, 'turns_saved':turn_log, 'create_first':createFirstDropoff(board, targets) }
 
         heavy_return_value = STORED_HALITE_VALUE * ship.halite / nearest_dropoff_dist if nearest_dropoff_dist > 0 else 0
-        danger_return = True if sum(DANGER[ship.id]) >= CHASE_DANGER_THRESH and ship.halite > 0 else False
+        end_game_return = board.step > 380
+        danger_return = True if sum(DANGER[ship.id]) >= 6 and ship.halite > 0 else False
         if danger_return:
             STORED_HALITE_VALUE = min(MAX_STORED_HALITE_VALUE, STORED_HALITE_VALUE + STORED_HALITE_INCR)
         n_yards = len(board.current_player.shipyards)
-        if ((n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or (n_yards == 0 and createFirstDropoff(board, targets))\
-                or isTimeToEndgameReturn(board, ship) or danger_return) and nearest_dropoff['point'] != None:
+        if ( (n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or ( n_yards == 0 and createFirstDropoff(board, targets) )\
+                or end_game_return or danger_return) and nearest_dropoff['point'] != None:
             #reassign target of the ship
             dropoff_targets[ship.id] = {'point':nearest_dropoff['point'], 'value': 1, 'halite': 0, 'mining_time': 0, 'mined':0, 'next_val': targets[ship.id]['next_val']}
             dropoff_target_list[ship.id] = 'returning to dropoff'
@@ -941,7 +861,7 @@ def nearestDropoff(board, ship_point, h=0):
     if (ship_point, h, BEST_NEW_DROPOFF, FUTURE_DROPOFF) in NEAREST_DROPOFF:
         return NEAREST_DROPOFF[ (ship_point, h, BEST_NEW_DROPOFF, FUTURE_DROPOFF) ]
     size = board.configuration.size
-    min_distance, min_pos, orig_dist = MAX_INT, None, 0
+    min_distance, min_pos, orig_dist = float('inf'), None, 0
     #only look at future dropoffs if we have enough money to fund them
     if FUTURE_DROPOFF and board.current_player.halite + h >= 500:
         future_dropoff_list = [FUTURE_DROPOFF]
@@ -978,7 +898,7 @@ def nearestEDropoff(board, square):
         return NEAREST_EDROPOFF[ square ]
 
     size = board.configuration.size
-    min_distance = MAX_INT
+    min_distance = float('inf')
     for opponent in board.opponents:
         for e_yard in opponent.shipyards:
             distance = manhattan_distance(square, e_yard.position)
@@ -1027,15 +947,15 @@ def SpawnShips2(board, augmented, assigned, general_dominance_map, attack_point_
                 if (not assigned[top['point']] and next_val <= top_val) or idx >= len(a_list) - 1:
                     break
             top_val = max(top_val, attack_val)
-            GAMMA_SHIPS = min (1, 13 / len(board.current_player.ships) if len(board.current_player.ships) > 0 else MAX_INT)
+            GAMMA_SHIPS = min (1, 13 / len(board.current_player.ships) if len(board.current_player.ships) > 0 else float('inf'))
             #if 0 ships, we need to make 1
             next_ship_value = Gamma(board.step, top_val) * GAMMA_SHIPS
-            if next_ship_value >= SHIP_MIN_VAL and board.step < DISALLOW_SHIP_SPAWN_STEP:
+            if next_ship_value >= SHIP_MIN_VAL and board.step < 280:
                 shipyard_occupied[shipyard.id][board.step + count] = 'new_ship'
             assigned[top['point']] = True
             nsv.append(top_val)
-            if (next_ship_value > SHIP_MIN_VAL or board.step < DISALLOW_SHIP_SPAWN_STEP) and not assigned[shipyard.position] and curr_halite >= 500\
-                        and len(board.current_player.ships) < MAX_SHIPS and board.step < DISALLOW_SHIP_SPAWN_STEP:
+            if (next_ship_value > SHIP_MIN_VAL or board.step < 280) and not assigned[shipyard.position] and curr_halite >= 500\
+                        and len(board.current_player.ships) < MAX_SHIPS and board.step < 280:
                 shipyard.next_action = ShipyardAction.SPAWN
                 spawned_points[shipyard.position] = 'spawn'
                 curr_halite -= 500
@@ -1111,19 +1031,19 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
             ship_point = ship.position
             square_distance = manhattan_distance(ship_point, square)
             nearest_dropoff = nearestDropoff(board, ship_point, h=ship.halite)
-            nearest_dropoff_dist = nearest_dropoff['dist']
+            nearest_dropoff_dist =nearest_dropoff['dist']
             if nearest_dropoff['point'] and board.cells[nearest_dropoff['point']].shipyard != None:
                 while shipyard_occupied[ board.cells[ nearest_dropoff['point'] ].shipyard.id ][ board.step + nearest_dropoff_dist ]:
                     nearest_dropoff_dist += 1
             #was next_val
             saved_amount = targets[ship.id]['value'] * max(nearest_dropoff_dist - square_distance,0)
             #we can't save more than our amortized value * turns left in game
-            saved_amount = max(saved_amount, targets[ship.id]['value'] * (MAX_STEPS - board.step ))
+            saved_amount = max(saved_amount, targets[ship.id]['value'] * (MAX_STEPS - board.step ) )
             total_saved += saved_amount
 
         #We save the total amortized value of the harbor * 1 + STORED HALITE VALUE
         #This is saying we would have to return once and again with the increasing return rate
-        total_saved += harbor_dist * harbor_value / DROPOFF_LIMIT * (1 + STORED_HALITE_VALUE)
+        total_saved += harbor_dist * harbor_value/DROPOFF_LIMIT * (1+ STORED_HALITE_VALUE)
 
         return total_saved
     def harborSavings(square):
@@ -1148,7 +1068,7 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
         return False
     max_savings, best_dropoff = 0, None
     convert_savings, best_convert = 0, None
-    mhv, best_harbor, best_harbor_dist, ohv = MIN_INT, None, 0, 0
+    mhv, best_harbor, best_harbor_dist, ohv = float('-inf'), None, 0, 0
     tested = defaultdict(lambda: {'v':0, 'n':0})
     all_points = {}
     for ship in ships:
@@ -1161,16 +1081,10 @@ def decideIfCreateDropoff(board, ships, targets, attacking_ships, assigned, gene
                 if dist > DISTANCE_THRESHOLD:
                     continue
                 nearest_dropoff_dist = nearestDropoff(board, square, ship.halite)['dist']
-                nearest_enemy_dropoff_dist = nearestEDropoff(board, square)
                 #don't assign squares that are targets as dropoffs
-                if nearest_dropoff_dist <= DISTANCE_BETWEEN_DROPOFFS or nearest_enemy_dropoff_dist <= DISTANCE_BETWEEN_DROPOFFS - 2:
+                if nearest_dropoff_dist < DISTANCE_BETWEEN_DROPOFFS or nearestEDropoff(board,square) < DISTANCE_BETWEEN_DROPOFFS-2:
                     continue
-                # try to be further from nearest enemy dropoff if we have no dropoffs right now (nuanced, to prevent our single new one from getting immediately destroyed)
-                if n_yards == 0 and nearest_enemy_dropoff_dist <= DISTANCE_BETWEEN_DROPOFFS + 2:
-                    continue
-                # only build new dropoffs within MAX_DIST_AWAY_FROM_DROPOFF manhattan dist of any current dropoff (if there are current dropoffs)
-                if n_yards > 0 and not any([manhattan_distance(shipyard.position, square) <= MAX_DISTANCE_AWAY_FROM_DROPOFF for shipyard in board.current_player.shipyards]):
-                    continue
+                #finds best point
                 tested[square]['n'] += 1
                 if tested[square]['n'] == SHIPS_REQUIRED_IN_DROPOFF_DISTANCE or (n_yards == 0 and tested[square]['n'] == 1):
                     if len(attacking_ships) < len(targets) or True:
@@ -1257,11 +1171,6 @@ def agent(obs, config):
     (general_dominance_map, dominance_map) = createDominanceMap(board, ships)
     if logging_mode:
         end_dom = time.time()
-
-    # update danger scores for ships
-    updateDanger(board)
-    if logging_mode:
-        end_danger = time.time()
     
     # setup for attacking/mining logic
     attack_ships = []
@@ -1311,13 +1220,8 @@ def agent(obs, config):
     if logging_mode:
         end_protect = time.time()
 
-    # re-order mining/attacking ships to prioritize movement appropriately
-    prioritized_order = prioritizeShipOrder(board, assignment_order, attack_order)
-    if logging_mode:
-        end_prioritize = time.time()
-
     # assign moves to ships
-    actions = assignMovesToShips(board, prioritized_order, targets, spawned_points, new_ship_avalue, protect)
+    actions = assignMovesToShips(board, assignment_order + attack_order, targets, spawned_points, new_ship_avalue, protect)
     if logging_mode:
         step_log['ship_actions'] = actions
         step_log['protect'] = protect_log
@@ -1359,9 +1263,9 @@ def agent(obs, config):
     if logging_mode and print_log:
         log_str = "turn: {}\nattacking ships: {}\nmining ships: {}\nattack_target: {}\nhas_decimated: {}\n" \
                   "best new dropoff: {}\nfuture dropoff: {}\n" \
-                  "setup time: {}\ndominance_map time: {}\ndanger time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
+                  "setup time: {}\ndominance_map time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
                   "spawning_logic time: {}\ndecide_create_dropoff time: {}\ndecide_return time: {}\n" \
-                  "protect time: {}\nprioritize time: {}\nassign_moves time: {}\nassign_tasks time: {}\nextra_logging time: {}\n"
+                  "protect time: {}\nassign_moves time: {}\nassign_tasks time: {}\nextra_logging time: {}\n"
         print(log_str.format(board.step,
                              len(attack_ships),
                              len(mining_ships),
@@ -1371,19 +1275,14 @@ def agent(obs, config):
                              FUTURE_DROPOFF if FUTURE_DROPOFF != None else 'None',
                              end_setup - start,
                              end_dom - end_setup,
-                             end_danger - end_dom,
-                             end_attack - end_danger,
+                             end_attack - end_dom,
                              end_mining - end_attack,
                              end_spawn - end_mining,
                              end_dropoff - end_spawn,
                              end_return - end_dropoff,
                              end_protect - end_return,
-                             end_prioritize - end_protect,
-                             end_assign_moves - end_prioritize,
+                             end_assign_moves - end_protect,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
-        if board.step == 395:
-            with open('log.txt', 'w') as f:
-                json.dump(log, f)
 
     return my.next_actions
