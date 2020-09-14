@@ -68,8 +68,6 @@ ATTACKING_SHIPS = defaultdict(lambda: False)
 DANGER = defaultdict(lambda: [0,0,0])
 CENTER, CENTER_VAL = None, MAX_INT
 HAS_DECIMATED = -1
-MAX_FARM_VAL = 450
-SAFETY_CONST_DOWNWEIGHT = 0.25
 BORDERS = {}
 
 log = []
@@ -133,11 +131,14 @@ def moveToPlus(move_prob, plus):
         return 1
 
 def getAdjacentOpponents(board):
+    return [0,1,2,3]
+    '''
     me_id = board.current_player.id
     if me_id == 0 or me_id == 3:
         return [1,2]
     else:
         return [0,3]
+    '''
 
 
 def isDecimated(board):
@@ -153,9 +154,7 @@ def isDecimated(board):
 
 def chooseOpponentToDecimateViaRatio(board):
     global HAS_DECIMATED, OPPONENT_TO_TARGET
-    if HAS_DECIMATED >= 0 or isDecimated(board):
-        OPPONENT_TO_TARGET = None
-        return
+
     max_ratio, max_opponent = 0, None
     neighbors = getAdjacentOpponents(board)
     for opponent in board.opponents:
@@ -172,7 +171,7 @@ def chooseOpponentToDecimateViaRatio(board):
 def getStartingQuadrantCenter(board):
     me = board.current_player.id
     quadrant_centers = [(5, 15), (15, 15), (5, 5), (15, 5)]
-    return Point(quadrant_centers[me][0], quadrant_centers[me][1])  
+    return Point(quadrant_centers[me][0], quadrant_centers[me][1])
 
 def getBorders(board):
         if HAS_DECIMATED >= 0:
@@ -286,7 +285,7 @@ def attackLogic(board, attacking_ships):
                         attack_point = ( (possible_point.x + rel_x)%size , (possible_point.y + rel_y)%size )
                         capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
                         ap = Point(attack_point[0], attack_point[1])
-                        within_multiplier = 0 if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and not withinBorders(board, ap) else 1
+                        within_multiplier = WITHIN_BOUNDARY_MULTIPLIER if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and withinBorders(board, ap) else 1
                         attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
 
                         if logging_mode:
@@ -439,8 +438,8 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
                 val = -((1 - 0.75**mining_time) * H) / (dist + mining_time)
                 if dominance:
                     val *= dominance[(point_x, point_y)]
-                if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and not withinBorders(board, target):
-                    val = 0
+                if isPastAttackingTime(board) and OPPONENT_TO_TARGET == None and withinBorders(board, target):
+                    val *= WITHIN_BOUNDARY_MULTIPLIER
                 if board.step < 30:
                     starting_locations = [Point(5,15), Point(15,15), Point(5,5), Point(15,5)]
                     first_dropoff_dist = squareDistance(starting_locations[board.current_player.id], target) if len(board.current_player.shipyards) > 0 else 1
@@ -609,7 +608,7 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
     weighting = defaultdict(lambda: 0)
     size = board.configuration.size
     # compute number of enemy ships on each team in PLUS around ship
-    id_to_num_near_ships = defaultdict(lambda: 0)   
+    id_to_num_near_ships = defaultdict(lambda: 0)
     for (x_dif, y_dif) in PLUS_SHAPE:
         square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
         other_ship = board.cells[square_point].ship
@@ -897,7 +896,7 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
             STORED_HALITE_VALUE = min(MAX_STORED_HALITE_VALUE, STORED_HALITE_VALUE + STORED_HALITE_INCR)
         n_yards = len(board.current_player.shipyards)
         if ((n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or (n_yards == 0 and createFirstDropoff(board, targets))\
-            or end_game_return or danger_return) and nearest_dropoff['point'] != None:
+                or end_game_return or danger_return) and nearest_dropoff['point'] != None:
             #reassign target of the ship
             dropoff_targets[ship.id] = {'point':nearest_dropoff['point'], 'value': 1, 'halite': 0, 'mining_time': 0, 'mined':0, 'next_val': targets[ship.id]['next_val']}
             dropoff_target_list[ship.id] = 'returning to dropoff'
@@ -917,15 +916,6 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
     target_list.update(dropoff_target_list)
     return (targets, target_list, dropoff_log)
 
-def safety(board, square):
-    total_safety = 0
-    if square.value >= MAX_FARM_VAL:
-        return 0
-    for ship in board.current_player.ships:
-        if ATTACKING_SHIPS[ship.id] and ship.halite == 0:
-            dist_from_square = manhattan_distance(ship.position, square)
-            total_safety += 0.75 ** (dist_from_square - 1) if dist_from_square > 0 else 1
-    return 1 - total_safety * SAFETY_CONST_DOWNWEIGHT
 
 def nearestDropoff(board, ship_point, h=0):
     global NEAREST_DROPOFF, BEST_NEW_DROPOFF, FUTURE_DROPOFF, CENTER, CENTER_VAL
