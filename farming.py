@@ -894,7 +894,7 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
         if danger_return:
             STORED_HALITE_VALUE = min(MAX_STORED_HALITE_VALUE, STORED_HALITE_VALUE + STORED_HALITE_INCR)
         n_yards = len(board.current_player.shipyards)
-        if ( (n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or ( n_yards == 0 and createFirstDropoff(board, targets) )\
+         if ((n_yards > 0 and (return_value > return_cost or heavy_return_value > return_cost or RETURNING[ship.id])) or (n_yards == 0 and createFirstDropoff(board, targets))\
                 or end_game_return or danger_return) and nearest_dropoff['point'] != None:
             #reassign target of the ship
             dropoff_targets[ship.id] = {'point':nearest_dropoff['point'], 'value': 1, 'halite': 0, 'mining_time': 0, 'mined':0, 'next_val': targets[ship.id]['next_val']}
