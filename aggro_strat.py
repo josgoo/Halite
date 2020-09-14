@@ -71,8 +71,8 @@ HAS_DECIMATED = -1
 BORDERS = {}
 
 log = []
-logging_mode = True
-print_log = True
+logging_mode = False
+print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
@@ -170,7 +170,7 @@ def chooseOpponentToDecimateViaRatio(board):
 def getStartingQuadrantCenter(board):
     me = board.current_player.id
     quadrant_centers = [(5, 15), (15, 15), (5, 5), (15, 5)]
-    return quadrant_centers[me]
+    return Point(quadrant_centers[me])
 
 def getBorders(board):
         if HAS_DECIMATED >= 0:
