@@ -619,6 +619,9 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
         other_ship = board.cells[square_point].ship
         if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
             collision_coef = id_to_num_near_ships[other_ship.player_id]
+            if collision_coef == 0:
+                print('coll coef', collision_coef)
+                raise ValueError("")
             (prob_x, prob_y, prob_other) = expectedShipAction(board, other_ship)
             for (x_move, y_move) in MOVES:
                 danger_point = (x_dif + x_move , y_dif + y_move)
