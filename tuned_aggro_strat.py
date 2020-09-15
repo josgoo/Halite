@@ -185,13 +185,13 @@ def chooseOpponentToDecimateViaRatio(board):
             if ratio > max_ratio and miners > OPPONENT_ATTACK_MIN_SHIPS + 2:
                 max_ratio = ratio
                 max_opponent = opponent.id
-        print('miners for {}: {}'.format(opponent.id, miners))
+        #print('miners for {}: {}'.format(opponent.id, miners))
 
     OPPONENT_TO_TARGET = max_opponent
     # only set this to false after successfully choosing an adjacent target once
     if OPPONENT_TO_TARGET != None and IS_FIRST_TIME_CHOOSING_TARGET:
         IS_FIRST_TIME_CHOOSING_TARGET = False
-    print('targeting: ', OPPONENT_TO_TARGET)
+    #print('targeting: ', OPPONENT_TO_TARGET)
 
 def getStartingQuadrantCenter(board):
     me = board.current_player.id
@@ -894,7 +894,7 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
                         swap_ship.next_action = DIR_TO_ACTION[swap_ship_alt_space['dir']]
                         alt_target = targets['attack'][swap_ship.id]['point'] if ATTACKING_SHIPS[swap_ship.id] else targets['mine'][swap_ship.id]['point']
                         space_taken[swap_ship_alt_space['point']] = {'target': alt_target, 'id': swap_ship.id, 'value': swap_ship_alt_space['value'], 'alternative': {'point': None, 'dir': None, 'value': 0}}
-                        print('did the weird thing!', board.step)
+                        #print('did the weird thing!', board.step)
                         break
             if len(actions) == idx: #If this happens we are fucked, two friendly ships are colliding
                 for force_dir in actions:

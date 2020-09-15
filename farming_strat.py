@@ -246,21 +246,19 @@ def getBordersOfQuadrantsFromIds(pid1, pid2):
             return [((0, 10), (10, 0)), ((10, 20), (20, 10))]
 
 def withinBorders(board, point):
+    size = board.configuration.size
     borders = getBorders(board)
-    if isinstance(borders, dict):
-        return borders[point]
-    #if borders is not a dictionary, it must be the half of the map
     ((tlx,tly), (brx,bry)) = borders
     dist = 0
     if tlx < brx and (point.x < tlx or point.x > brx):
-        x_dist_tl = tlx - point.x
-        x_dist_br = point.x - brx
+        x_dist_tl = abs(tlx - point.x)
+        x_dist_br = abs(point.x - brx)
         dist += min(min(x_dist_tl, size - x_dist_tl), min(x_dist_br, size - x_dist_br))
     if brx < tlx and (brx < point.x < tlx):
         dist += min(tlx - point.x, point.x - brx)
     if tly > bry and (point.y > tly or point.y < bry):
-        y_dist_tl = point.y - tly
-        y_dist_br = bry - point.y
+        y_dist_tl = abs(point.y - tly)
+        y_dist_br = abs(bry - point.y)
         dist += min(min(y_dist_tl, size - y_dist_tl), min(y_dist_br, size - y_dist_br))
     if tly < bry and (tly < point.y < bry):
         dist += min(bry - point.y, point.y - tly)
@@ -357,7 +355,7 @@ def attackLogic(board, attacking_ships):
                     capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
                     ap = Point(attack_point[0], attack_point[1])
 
-                    if isFarmingMode(board): 
+                    if isFarmingMode(board):
                         dist_from_border = withinBorders(board, ap)
                         dist_downweight = ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT[dist_from_border] if dist_from_border < len(ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT) else 0
                     else:
@@ -567,6 +565,7 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
 
 def updateSafetyValues(board):
     global SAFETY
+    size = board.configuration.size
     SAFETY = defaultdict(lambda: 0)
     for ship in board.current_player.ships:
         if ATTACKING_SHIPS[ship.id] and not RETURNING[ship.id]:
@@ -1431,6 +1430,11 @@ def agent(obs, config):
     updateDanger(board)
     if logging_mode:
         end_danger = time.time()
+
+    # update safety values for ships
+    updateSafetyValues(board)
+    if logging_mode:
+        end_safety = time.time()
     
     # setup for attacking/mining logic
     attack_ships = []
@@ -1528,7 +1532,7 @@ def agent(obs, config):
     if logging_mode and print_log:
         log_str = "turn: {}\nattacking ships: {}\nmining ships: {}\nattack_target: {}\nhas_decimated: {}\n" \
                   "best new dropoff: {}\nfuture dropoff: {}\n" \
-                  "setup time: {}\ndominance_map time: {}\ndanger time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
+                  "setup time: {}\ndominance_map time: {}\ndanger time: {}\nsafety time: {}\nattack_logic time: {}\nmining_logic time: {}\n" \
                   "spawning_logic time: {}\ndecide_create_dropoff time: {}\ndecide_return time: {}\n" \
                   "protect time: {}\nprioritize time: {}\nassign_moves time: {}\nassign_tasks time: {}\nextra_logging time: {}\n"
         print(log_str.format(board.step,
@@ -1541,7 +1545,8 @@ def agent(obs, config):
                              end_setup - start,
                              end_dom - end_setup,
                              end_danger - end_dom,
-                             end_attack - end_danger,
+                             end_safety - end_danger,
+                             end_attack - end_safety,
                              end_mining - end_attack,
                              end_spawn - end_mining,
                              end_dropoff - end_spawn,
@@ -1551,7 +1556,7 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
-                             
+
     if board.step == 300:
         with open('log.txt', 'w') as outfile:
             json.dump(log, outfile)
