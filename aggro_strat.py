@@ -696,34 +696,40 @@ def findVectorComponents(board, start, end):
     vec_x = (end.x - start.x) / total_dist * x_mult
     vec_y = (end.y - start.y) / total_dist * y_mult
     return (vec_x, vec_y)
-def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
+def findDesiredAction(board, ship, end, amortized_value, specific_dom_map, can_mine=True):
     start = ship.position
     size = board.configuration.size
     directions = {}
     (vec_x, vec_y) = findVectorComponents(board, start, end)
     collision_cost = 500 + ship.halite + amortized_value - gamma_pdf(board.step)
     collision_weightings = factorCollisionsIntoActions(board, ship, collision_cost)
+
+    left_point = ((ship.position.x - 1) % size, ship.position.y)
+    right_point = ((ship.position.x + 1) % size, ship.position.y)
     if vec_x != 0:
-        directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)]
-        directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)]
+        directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)] + specific_dom_map[right_point]
+        directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)] + specific_dom_map[left_point]
     else:
-        directions[(1,0)] = -amortized_value + collision_weightings[(1,0)]
-        directions[(-1,0)] = -amortized_value + collision_weightings[(-1,0)]
+        directions[(1,0)] = -amortized_value + collision_weightings[(1,0)] + specific_dom_map[right_point]
+        directions[(-1,0)] = -amortized_value + collision_weightings[(-1,0)] + specific_dom_map[left_point]
+
+    up_point = (ship.position.x, (ship.position.y + 1) % size)
+    down_point = (ship.position.x, (ship.position.y - 1) % size)
     if vec_y != 0:
-        directions[(0,1)] = vec_y * amortized_value + collision_weightings[(0,1)]
-        directions[(0,-1)] = -vec_y * amortized_value + collision_weightings[(0,-1)]
+        directions[(0,1)] = vec_y * amortized_value + collision_weightings[(0,1)] + specific_dom_map[up_point]
+        directions[(0,-1)] = -vec_y * amortized_value + collision_weightings[(0,-1)] + specific_dom_map[down_point]
     else:
-        directions[(0,1)] = -amortized_value + collision_weightings[(0,1)]
-        directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)]
+        directions[(0,1)] = -amortized_value + collision_weightings[(0,1)] + specific_dom_map[up_point]
+        directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)] + specific_dom_map[down_point]
     #staying still is divided by an additional 2 to account for the additional vec_x/vec_y weighting
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
     mb_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
     # enemy yard is obstructing us if it is in the direction we want to move, we want to move strictly vertically or horizontally, and we have another non-dangerous move
     is_yard_obstruction = mb_enemy_yard and mb_enemy_yard.player_id != board.current_player_id and (vec_x == 0 or vec_y == 0) and any([w == 0 for w in collision_weightings.values()])
-    # staying still while attacking mines halite
-    is_attack_force_mine = ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0
+    # staying still while attacking mines halite, but its ok if we're returning
+    is_attack_force_mine = ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0 and not RETURNING[ship.id]
     if not (is_attack_force_mine) and not (is_yard_obstruction):
-        directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
+        directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)] # don't want to add dom map for staying still
 
     return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
 
@@ -777,7 +783,7 @@ def prioritizeShipOrder(board, mining_order, attacking_order):
     returning = sorted(mine_returning + attack_returning, key=lambda k: board.ships[k].halite, reverse=True)
     return returning + mine_not_returning + attack_not_returning
 
-def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, PROTECT):
+def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, PROTECT, specific_dominance_map):
     global RETURNING, DANGER, logging_mode
     size = board.configuration.size
     def assignMove(ship_id):
@@ -788,7 +794,7 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         if ship.position == target and space_taken[ship.position] != False and space_taken[ship.position] != 'spawn'\
                 and ATTACKING_SHIPS[space_taken[ship.position]['id']] == ATTACKING_SHIPS[ship.id]:
             target = space_taken[ship.position]['target']
-        (actions, values, collisions) = findDesiredAction(board, ship, target, val, can_mine = not RETURNING[ship_id] and not ATTACKING_SHIPS[ship_id])
+        (actions, values, collisions) = findDesiredAction(board, ship, target, val, specific_dominance_map[ship_id], can_mine = not RETURNING[ship_id] and not ATTACKING_SHIPS[ship_id])
         ship_point = ship.position
         action_dict['directions'][ship_id] = remap_keys(values)
         action_dict['collisions'][ship_id] = remap_keys(collisions)
@@ -1376,7 +1382,7 @@ def agent(obs, config):
         end_prioritize = time.time()
 
     # assign moves to ships
-    actions = assignMovesToShips(board, prioritized_order, targets, spawned_points, new_ship_avalue, protect)
+    actions = assignMovesToShips(board, prioritized_order, targets, spawned_points, new_ship_avalue, protect, dominance_map)
     if logging_mode:
         step_log['ship_actions'] = actions
         step_log['protect'] = protect_log
