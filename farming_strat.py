@@ -81,6 +81,7 @@ HAS_DECIMATED = -1
 BORDERS = {}
 IS_FIRST_TIME_CHOOSING_TARGET = True
 SAFETY = defaultdict(lambda: 0)
+SAFETY_NUM = defaultdict(lambda: 0)
 
 log = []
 logging_mode = True
@@ -113,7 +114,7 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
             square_halite = board.cells[square].halite
             if square_halite <= MAX_FARM_LIMIT:
                 for i in range(MAX_ATTACKERS_TO_SHIP):
-                    this_attack_vals[square]['v'][i] += (0.75 ** dist) / 2 * 1.02 * square_halite
+                    this_attack_vals[square]['v'][i] += ((0.75 ** dist) / 2 * 1.02 * square_halite) / (SAFETY_NUM[square] if SAFETY_NUM[square] > 0 else 1)
 
     return this_attack_vals
 
@@ -212,31 +213,34 @@ def getStartingQuadrantCenter(board):
     quadrant_centers = [Point(5, 15), Point(15, 15), Point(5, 5), Point(15, 5)]
     return quadrant_centers[me]
 
-def getBorders(board):
-        if False and HAS_DECIMATED >= 0:
-            me = board.current_player.id
-            if me + HAS_DECIMATED == 1:
-                return ((0,20), (20,10))
-            elif me + HAS_DECIMATED == 2:
-                return ((0,20), (10,0))
-            elif me + HAS_DECIMATED == 4:
-                return ((10,20), (20,0))
-            elif me + HAS_DECIMATED == 5:
-                return ((0,10), (20,0))
-            print("ERROR" + str(HAS_DECIMATED + me))
-            raise ValueError("ERROR" + str(HAS_DECIMATED + me))
-        if CENTER != None:
-            size = board.configuration.size
-            tlx = (CENTER.x - 5) % size
-            tly = (CENTER.y + 5) % size
-            brx = (CENTER.x + 5) % size
-            bry = (CENTER.y - 5) % size
-            return ((tlx,tly), (brx,bry))
+def getFarmRadius(board):
+    n_ships = len(board.current_player.ships)
+    if n_ships >= 30:
+        return (5, 5)
+    elif n_ships >= 27:
+        return (5, 4)
+    elif n_ships >= 21:
+        return (4, 4)
+    elif n_ships >= 16:
+        return (4, 3)
+    else:
+        return (3, 3)
+    
 
-        global BORDERS
-        if len(BORDERS) > 0:
-            return BORDERS
-        raise ValueError("shouldnt be here ever")
+def getBorders(board):
+    (farm_rad_x, farm_rad_y) = getFarmRadius(board)
+    if CENTER != None:
+        size = board.configuration.size
+        tlx = (CENTER.x - farm_rad_x) % size
+        tly = (CENTER.y + farm_rad_y) % size
+        brx = (CENTER.x + farm_rad_x) % size
+        bry = (CENTER.y - farm_rad_y) % size
+        return ((tlx,tly), (brx,bry))
+
+    global BORDERS
+    if len(BORDERS) > 0:
+        return BORDERS
+    raise ValueError("shouldnt be here ever")
 
 
 def getBordersOfQuadrantsFromIds(pid1, pid2):
@@ -577,15 +581,17 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
     return targets
 
 def updateSafetyValues(board):
-    global SAFETY
+    global SAFETY, SAFETY_NUM
     size = board.configuration.size
     SAFETY = defaultdict(lambda: 0)
+    SAFETY_NUM = defaultdict(lambda: 0)
     for ship in board.current_player.ships:
         if ATTACKING_SHIPS[ship.id] and not RETURNING[ship.id]:
             for (x_move, y_move) in PLUS_SHAPE_3DIST:
                 dist = abs(x_move) + abs(y_move)
                 square = Point((ship.position.x + x_move) % size, (ship.position.y + y_move) % size)
                 SAFETY[square] += (0.75 ** dist) / 2
+                SAFETY_NUM[square] += 1
 
 def miningLogic(board, ships, dominance_map, assigned_attacks):
     global DISTANCE_THRESHOLD
