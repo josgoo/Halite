@@ -84,7 +84,7 @@ SAFETY = defaultdict(lambda: 0)
 SAFETY_NUM = defaultdict(lambda: 0)
 
 log = []
-logging_mode = True
+logging_mode = False
 print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
@@ -1579,10 +1579,5 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
-
-    print(board.step, isFarmingMode(board))
-    if board.step == 225:
-        with open('log.txt', 'w') as outfile:
-            json.dump(log, outfile)
 
     return my.next_actions
