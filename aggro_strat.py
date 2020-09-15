@@ -55,6 +55,7 @@ IGNORE_BORDER_MULTIPLIER_STEP = 330 # what step we should no longer add a multip
 RUN_AWAY_SHIP_THRESH = 3 # if we have this number of ships or less in endgame, dont ever convert to dropoff
 ENDGAME_RETURN_BUFFER = 5
 DANGER_CONVERT_THRESH = 7 # if the DANGER is at or above this value and ship has >= 500 halite, make a shipyard
+DOM_MAP_BONUS = 10  # multiplier to make magnitude of dom map affect higher on collisions
 
 # global variables
 FUTURE_DROPOFF = None
@@ -695,19 +696,22 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
     weighting = defaultdict(lambda: 0)
     size = board.configuration.size
     # compute number of enemy ships on each team in PLUS around ship
-    id_to_num_near_ships = defaultdict(lambda: 0)
+    id_to_danger_near_ships = defaultdict(lambda: 0)
     for (x_dif, y_dif) in PLUS_SHAPE:
         square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
         other_ship = board.cells[square_point].ship
         if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
-            id_to_num_near_ships[other_ship.player_id] += 1
+            if (x_dif, y_dif) in MOVES:
+                id_to_danger_near_ships[other_ship.player_id] += 2
+            else:
+                id_to_danger_near_ships[other_ship.player_id] += 1
     
     for (x_dif, y_dif) in PLUS_SHAPE:
         square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
         other_ship = board.cells[square_point].ship
         if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
             if other_ship.halite == 0:
-                collision_coef = id_to_num_near_ships[other_ship.player_id] + 3     #want this to be closer than before
+                collision_coef = id_to_danger_near_ships[other_ship.player_id] + 3     #want this to be closer than before
             else:
                 collision_coef = 1
             (prob_x, prob_y, prob_other) = expectedShipAction(board, other_ship)
@@ -772,20 +776,20 @@ def findDesiredAction(board, ship, end, amortized_value, specific_dom_map, can_m
     left_point = ((ship.position.x - 1) % size, ship.position.y)
     right_point = ((ship.position.x + 1) % size, ship.position.y)
     if vec_x != 0:
-        directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)] + specific_dom_map[right_point]
-        directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)] + specific_dom_map[left_point]
+        directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)] + (specific_dom_map[right_point] * DOM_MAP_BONUS)
+        directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)] + (specific_dom_map[left_point] * DOM_MAP_BONUS)
     else:
-        directions[(1,0)] = -amortized_value + collision_weightings[(1,0)] + specific_dom_map[right_point]
-        directions[(-1,0)] = -amortized_value + collision_weightings[(-1,0)] + specific_dom_map[left_point]
+        directions[(1,0)] = -amortized_value + collision_weightings[(1,0)] + (specific_dom_map[right_point] * DOM_MAP_BONUS)
+        directions[(-1,0)] = -amortized_value + collision_weightings[(-1,0)] + (specific_dom_map[left_point] * DOM_MAP_BONUS)
 
     up_point = (ship.position.x, (ship.position.y + 1) % size)
     down_point = (ship.position.x, (ship.position.y - 1) % size)
     if vec_y != 0:
-        directions[(0,1)] = vec_y * amortized_value + collision_weightings[(0,1)] + specific_dom_map[up_point]
-        directions[(0,-1)] = -vec_y * amortized_value + collision_weightings[(0,-1)] + specific_dom_map[down_point]
+        directions[(0,1)] = vec_y * amortized_value + collision_weightings[(0,1)] + (specific_dom_map[up_point] * DOM_MAP_BONUS)
+        directions[(0,-1)] = -vec_y * amortized_value + collision_weightings[(0,-1)] + (specific_dom_map[down_point] * DOM_MAP_BONUS)
     else:
-        directions[(0,1)] = -amortized_value + collision_weightings[(0,1)] + specific_dom_map[up_point]
-        directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)] + specific_dom_map[down_point]
+        directions[(0,1)] = -amortized_value + collision_weightings[(0,1)] + (specific_dom_map[up_point] * DOM_MAP_BONUS)
+        directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)] + (specific_dom_map[down_point] * DOM_MAP_BONUS)
     #staying still is divided by an additional 2 to account for the additional vec_x/vec_y weighting
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
     mb_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
