@@ -153,7 +153,6 @@ def getAdjacentOpponents(board):
     else:
         return [0,3]
 
-
 def isDecimated(board):
     if OPPONENT_TO_TARGET == None:
         return False
@@ -227,6 +226,22 @@ def getBorders(board):
         BORDERS = within
         return within
 
+def getBordersOfQuadrantsFromIds(pid1, pid2):
+    pid_sum = pid1 + pid2
+    if pid_sum == 1:
+        return [((0, 20), (20, 10))]
+    elif pid_sum == 2:
+        return [((0, 20), (10, 0))]
+    elif pid_sum == 4:
+        return [((10, 20), (20, 0))]
+    elif pid_sum == 5:
+        return [((0, 10), (20, 0))]
+    else:
+        if (pid1 == 0 and pid2 == 3) or (pid1 == 3 and pid2 == 0):
+            return [((0,20), (10,10)), ((10, 10), (20, 0))]
+        elif (pid1 == 1 and pid2 == 2) or (pid1 == 2 and pid2 == 1):
+            return [((0, 10), (10, 0)), ((10, 20), (20, 10))]
+
 def withinBorders(board, point):
     borders = getBorders(board)
     if isinstance(borders, dict):
@@ -280,40 +295,59 @@ def attackLogic(board, attacking_ships):
 
     #assumes all attack ships have 0 halite
     #populate value of probability of capturing each ship at every point
-    target_opponents = [board.players[OPPONENT_TO_TARGET]] if OPPONENT_TO_TARGET != None else board.opponents
-    for opponent in target_opponents:
-        for e_ship in opponent.ships:
-            if e_ship.halite > 0:
-                attack_point_vals[e_ship.id] = defaultdict(lambda: 0)
-                if logging_mode:
-                    attack_point_vals_log[e_ship.id] = defaultdict(lambda: 0)
-                
-                e_ship_pos = e_ship.position
-                (prob_x, prob_y, prob_other) = expectedShipAction(board, e_ship)
-                move_prob = {}
-                for (x_move, y_move) in MOVES:
-                    possible_point = Point( (e_ship_pos.x + x_move)%size , (e_ship_pos.y + y_move)%size )
-                    positive_prob_x = x_move * prob_x #these are positive when the other ship's next move is
-                    positive_prob_y = y_move * prob_y #in the same direction as it was previously going
-                    if positive_prob_x > 0:
-                        prob_actualized = positive_prob_x
-                    elif positive_prob_y > 0:
-                        prob_actualized = positive_prob_y
-                    else: #Expectation the ship stays still or moves in the opposite direction -> prob_other
-                        prob_actualized = prob_other
-                    move_prob[(x_move, y_move)] = prob_actualized
-                for (x_move, y_move) in MOVES:
-                    possible_point = Point( (e_ship_pos.x + x_move)%size , (e_ship_pos.y + y_move)%size )
-                    prob_actualized = move_prob[(x_move, y_move)]
-                    for (rel_x, rel_y) in PLUS_SHAPE_BLUR:
-                        attack_point = ( (possible_point.x + rel_x)%size , (possible_point.y + rel_y)%size )
-                        capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
-                        ap = Point(attack_point[0], attack_point[1])
-                        within_multiplier = WITHIN_BOUNDARY_MULTIPLIER if shouldApplyWithinBorderMultiplier(board, ap) else 1
-                        attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
+    targetable_ships = []
+    if OPPONENT_TO_TARGET == None:
+        # if no target, all ships are fair game
+        targetable_ships = [e_ship for e_ships in [opponent.ships for opponent in board.opponents] for e_ship in e_ships]
+    else:
+        for opponent in board.opponents:
+            for e_ship in opponent.ships:
+                # if we have a target, all their ships AND ships from other non-target players
+                # which are in either our starting quadrant or the quadrant we are attacking now are fair game
+                if opponent.id == OPPONENT_TO_TARGET:
+                    targetable_ships.append(e_ship)
+                else:
+                    # in diag case, this is a 2-elt list, which is why we have the loop
+                    quadrants = getBordersOfQuadrantsFromIds(board.current_player_id, OPPONENT_TO_TARGET)
+                    for ((tl_x, tl_y), (br_x, br_y)) in quadrants:
+                        if e_ship.position.x >= tl_x and e_ship.position.x <= br_x and \
+                           e_ship.position.y <= tl_y and e_ship.position.y >= br_y:
+                            print('in the edge case', board.step, ':', e_ship.position, ' | ', ((tl_x, tl_y), (br_x, br_y)))
+                            targetable_ships.append(e_ship)
+        
+    # compute value of attacking for all targetable ships
+    for e_ship in targetable_ships:
+        if e_ship.halite > 0:
+            attack_point_vals[e_ship.id] = defaultdict(lambda: 0)
+            if logging_mode:
+                attack_point_vals_log[e_ship.id] = defaultdict(lambda: 0)
+            
+            e_ship_pos = e_ship.position
+            (prob_x, prob_y, prob_other) = expectedShipAction(board, e_ship)
+            move_prob = {}
+            for (x_move, y_move) in MOVES:
+                possible_point = Point( (e_ship_pos.x + x_move)%size , (e_ship_pos.y + y_move)%size )
+                positive_prob_x = x_move * prob_x #these are positive when the other ship's next move is
+                positive_prob_y = y_move * prob_y #in the same direction as it was previously going
+                if positive_prob_x > 0:
+                    prob_actualized = positive_prob_x
+                elif positive_prob_y > 0:
+                    prob_actualized = positive_prob_y
+                else: #Expectation the ship stays still or moves in the opposite direction -> prob_other
+                    prob_actualized = prob_other
+                move_prob[(x_move, y_move)] = prob_actualized
+            for (x_move, y_move) in MOVES:
+                possible_point = Point( (e_ship_pos.x + x_move)%size , (e_ship_pos.y + y_move)%size )
+                prob_actualized = move_prob[(x_move, y_move)]
+                for (rel_x, rel_y) in PLUS_SHAPE_BLUR:
+                    attack_point = ( (possible_point.x + rel_x)%size , (possible_point.y + rel_y)%size )
+                    capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
+                    ap = Point(attack_point[0], attack_point[1])
+                    within_multiplier = WITHIN_BOUNDARY_MULTIPLIER if shouldApplyWithinBorderMultiplier(board, ap) else 1
+                    attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
 
-                        if logging_mode:
-                            attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
+                    if logging_mode:
+                        attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
 
     if logging_mode:
         attack_log['e_ship, point'] = attack_point_vals_log
@@ -781,7 +815,6 @@ def assignProtectors(board, new_ship_avalue):
             protector = board.cells[shipyard.position].ship
             PROTECT[shipyard.id] = protector.id if protector else None
         if one_step_protector:
-            print("One step protector!")
             PROTECT[shipyard.id] = one_step_protector
     protect_log = {'nsv_a': new_ship_avalue, 'Gamma': Gamma(board.step, new_ship_avalue)}
     return (PROTECT, protect_log)
@@ -1484,5 +1517,5 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
-
+    print(board.step)
     return my.next_actions
