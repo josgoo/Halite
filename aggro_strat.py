@@ -78,7 +78,7 @@ BORDERS = {}
 
 log = []
 logging_mode = True
-print_log = True
+print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
@@ -673,9 +673,11 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
                         # weighting for any other point can never be more than this, means enemy ship in every PLUS square around us
                         MAX_COLLISION_COEF = len(PLUS_SHAPE)
                         weighting[danger_point] += MAX_COLLISION_COEF * 1 * -capture_cost
+
+    for (x_move, y_move) in MOVES:
         other_shipyard = board.cells[square_point].shipyard
         if other_shipyard and other_shipyard.player_id != board.current_player_id:
-            weighting[(x_dif, y_dif)] += -capture_cost
+            weighting[(x_move, y_move)] += -capture_cost
     return weighting
 
 def findVectorComponents(board, start, end):
@@ -808,29 +810,46 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
             if space_taken[new_point] == 'spawn': #Undo the spawning of the ship
                 board.cells[new_point].shipyard.next_action = None
                 break
+            # top point is taken but we have another action
+            if space_taken[new_point] and len(actions) < idx:
+                swap_ship_alt_space = space_taken[new_point]['alternative']
+                snd_direction = actions[idx]
+                # person who is taking top action has a non-None, free alternative, and our alternative is free
+                if swap_ship_alt_space['point'] and space_taken[swap_ship_alt_space['point']] == False and space_taken[snd_direction] == False:
+                    swap_value = values[top_direction] + swap_ship_alt_space['value']
+                    no_swap_value = values[snd_direction] + space_taken[new_point]['value']
+                    if swap_value > no_swap_value:
+                        swap_ship = board.ships[space_taken[new_point]['id']]
+                        swap_ship.next_action = DIR_TO_ACTION[swap_ship_alt_space['dir']]
+                        alt_target = targets['attack'][swap_ship.id]['point'] if ATTACKING_SHIPS[swap_ship.id] else targets['mine'][swap_ship.id]['point']
+                        space_taken[swap_ship_alt_space['point']] = {'target': alt_target, 'id': swap_ship.id, 'value': swap_ship_alt_space['value'], 'alternative': {'point': None, 'dir': None, 'value': 0}}
+                        print('did the tihng!', board.step)
+                        break
             if len(actions) == idx: #If this happens we are fucked, two friendly ships are colliding
                 for force_dir in actions:
                     force_point = Point((ship_point.x + force_dir[0]) % size, (ship_point.y + force_dir[1]) % size)
                     alternative = space_taken[force_point]['alternative']
                     #If a blocking ship can move somewhere else
-                    if alternative['point'] and not space_taken[ alternative['point'] ]:
+                    if alternative['point'] and not space_taken[alternative['point']]:
                         #Move the blocking ship to the alternative spot
-                        blocking_ship = board.ships[ space_taken[force_point]['id'] ]
-                        blocking_ship.next_action = DIR_TO_ACTION[ alternative['dir'] ]
+                        blocking_ship = board.ships[space_taken[force_point]['id']]
+                        blocking_ship.next_action = DIR_TO_ACTION[alternative['dir']]
                         alt_target = targets['attack'][blocking_ship.id]['point'] if ATTACKING_SHIPS[blocking_ship.id] else targets['mine'][blocking_ship.id]['point']
-                        space_taken[ alternative['point'] ] = {'target':alt_target, 'id':blocking_ship.id, 'alternative': {'point': None, 'dir': None}}
+                        space_taken[alternative['point']] = {'target': alt_target, 'id': blocking_ship.id, 'value': alternative['value'], 'alternative': {'point': None, 'dir': None, 'value': 0}}
                         #Set up the current ship to move into the blocking ship position
                         new_point = force_point
                         top_direction = force_dir
+                        print('did the crazy other thing', board.step)
                         break
                 break
         #If there are more options than the chosen one left
         if len(actions) > idx:
             alt_dir = actions[idx]
             alt_point = Point((ship_point.x + alt_dir[0]) % size, (ship_point.y + alt_dir[1]) % size)
+            alt_value = values[alt_dir]
         else:
-            alt_dir, alt_point = None, None
-        space_taken[new_point] = {'target':target, 'id':ship.id, 'alternative': {'point': alt_point, 'dir': alt_dir}}
+            alt_dir, alt_point, alt_value = None, None, 0
+        space_taken[new_point] = {'target': target, 'id': ship.id, 'value': values[top_direction], 'alternative': {'point': alt_point, 'dir': alt_dir, 'value': alt_value}}
         ship.next_action = DIR_TO_ACTION[top_direction]
         action_dict['actions'][ship_id] = top_direction
         global FUTURE_DROPOFF
@@ -1446,8 +1465,10 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
+
+    if logging_mode:
         if board.step == 395:
             with open('log.txt', 'w') as f:
                 json.dump(log, f)
-
+    print(board.step)
     return my.next_actions
