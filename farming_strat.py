@@ -105,14 +105,15 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
                 if this_attack_vals[square]['target'] == e_ship:
                     this_attack_vals[square]['v'][i] = attack_ship_square_val
 
-    # add value for protecting squares
+    # add value for protecting squares that aren't full
     if isPastAttackingTime(board) and isFarmingMode(board):
         for (x_move, y_move) in PLUS_SHAPE_3DIST:
             dist = abs(x_move) + abs(y_move)
             square = Point((ship_pos.x + x_move) % size, (ship_pos.y + y_move) % size)
             square_halite = board.cells[square].halite
-            for i in range(MAX_ATTACKERS_TO_SHIP):
-                this_attack_vals[square]['v'][i] += (0.75 ** dist) / 2 * 1.02 * square_halite
+            if square_halite <= MAX_FARM_LIMIT:
+                for i in range(MAX_ATTACKERS_TO_SHIP):
+                    this_attack_vals[square]['v'][i] += (0.75 ** dist) / 2 * 1.02 * square_halite
 
     return this_attack_vals
 
