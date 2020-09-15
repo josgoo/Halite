@@ -337,6 +337,22 @@ def attackLogic(board, attacking_ships):
     attack_targets = {}
     targeted = defaultdict(lambda: False)
     attack_order = []
+
+    # if we are adjacent to open enemy shipyard, kill it
+    for ship in attacking_ships:
+        if RETURNING[ship.id] or ship.halite > 0:
+            continue
+        for (x_move, y_move) in MOVES:
+            square = Point((ship.position.x + x_move) % size, (ship.position.y + y_move) % size)
+            mb_shipyard = board.cells[square].shipyard
+            if mb_shipyard and mb_shipyard.player_id != board.current_player_id and \
+               not board.cells[square].ship and mb_shipyard.player.halite < 500 and \
+               not targeted[square]:
+                targeted[square] = True
+                attack_targets[ship.id] = {'point': square, 'value': 1000, 'target': mb_shipyard.id}
+                attack_order.append(ship.id)
+                print('attacking shipyard!', board.step)
+
     #assign targets to every attacking ship unless we have already assigned all attackers
     while len(attack_targets) < len(attacking_ships) and len(attack_targets) < MAX_ATTACKERS_TO_SHIP * len(attack_point_vals):
         max_loss_square, max_loss_ship, max_loss_val, max_best_val = None, None, 0, 0
