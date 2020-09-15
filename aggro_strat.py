@@ -806,14 +806,19 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         ship.next_action = DIR_TO_ACTION[top_direction]
         action_dict['actions'][ship_id] = top_direction
         global FUTURE_DROPOFF
-        h = board.current_player.halite + ship.halite
+        reg_should_convert = ((FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or \
+                             (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF)) and \
+                             board.current_player.halite + ship.halite >= 500
         # failsafe 1: if a heavy ship can't reach a dropoff before game ends, it should convert
+        failsafe_near_dropoff = nearestDropoff(board, ship.position)
+        failsafe_convert_1 = failsafe_near_dropoff and board.step >= 400 - failsafe_near_dropoff['dist'] and ship.halite >= 500
         # failsafe 2: if a heavy ship is in grave danger and will probably die, it should convert
-        if ((FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF) and h >= 500) or \
-            (board.step >= 399 and ship.halite >= 500 and not board.cells[new_point].shipyard) or \
-            (ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= DANGER_CONVERT_THRESH):
-            # failsafe 3: if we are in endgame and have few ships, never spawn a shipyard and run away instead
-            if board.step <= ENDGAME_STEP or len(board.current_player.ships) >= RUN_AWAY_SHIP_THRESH:
+        failsafe_convert_2 = ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= DANGER_CONVERT_THRESH
+        if reg_should_convert or failsafe_convert_1 or failsafe_convert_2:
+            # failsafe 3: if we have few ships and not enough halite to make shipyard and new ship, never spawn a shipyard and run away instead
+            if len(board.current_player.ships) <= RUN_AWAY_SHIP_THRESH and board.current_player.halite + max([s.halite for s in board.current_player.ships]) < 1000:
+                pass
+            else:
                 ship.next_action = ShipAction.CONVERT
                 FUTURE_DROPOFF = None
                 space_taken[new_point] = False
