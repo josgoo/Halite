@@ -966,8 +966,9 @@ def nearestDropoff(board, ship_point, h=0):
     shipyard_positions = [shipyard.position for shipyard in board.current_player.shipyards]
     all_dropoffs = shipyard_positions + future_dropoff_list
     # caching
-    if (ship_point, all_dropoffs) in NEAREST_DROPOFF:
-        return NEAREST_DROPOFF[(ship_point, all_dropoffs)]
+    all_dropoffs_str = ''.join([str(d) for d in all_dropoffs])
+    if (ship_point, all_dropoffs_str) in NEAREST_DROPOFF:
+        return NEAREST_DROPOFF[(ship_point, all_dropoffs_str)]
 
     size = board.configuration.size
     min_distance, min_pos, orig_dist = MAX_INT, None, 0
@@ -986,7 +987,7 @@ def nearestDropoff(board, ship_point, h=0):
         if distance < min_distance:
             min_distance = distance
             min_pos = yard
-    NEAREST_DROPOFF[(ship_point, all_dropoffs)] = {'dist':min_distance, 'point': min_pos, 'orig_dist': orig_dist}
+    NEAREST_DROPOFF[(ship_point, all_dropoffs_str)] = {'dist':min_distance, 'point': min_pos, 'orig_dist': orig_dist}
 
     if CENTER_VAL > dist_tot: #find the center point by the summed lowest distance to all dropoffs
         CENTER_VAL = dist_tot
