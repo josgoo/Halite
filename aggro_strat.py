@@ -312,7 +312,6 @@ def attackLogic(board, attacking_ships):
                     for ((tl_x, tl_y), (br_x, br_y)) in quadrants:
                         if e_ship.position.x >= tl_x and e_ship.position.x <= br_x and \
                            e_ship.position.y <= tl_y and e_ship.position.y >= br_y:
-                            print('in the edge case', board.step, ':', e_ship.position, ' | ', ((tl_x, tl_y), (br_x, br_y)))
                             targetable_ships.append(e_ship)
         
     # compute value of attacking for all targetable ships
