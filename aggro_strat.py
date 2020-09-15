@@ -12,8 +12,8 @@ PLUS_SHAPE_BLUR = {(2,0): 0.04, (-2,0): 0.04, (1,1): 0.08, (0,2): 0.04, (1,-1): 
 (-1,-1):0.08, (-1,1): 0.08, (1,0):0.24,(0,1):0.24,(-1,0):0.24,(0,-1):0.24,(0,0):1}
 MOVES = [ (1,0), (-1,0), (0,1), (0,-1), (0,0) ] #Direct moves a ship can make
 DIR_TO_ACTION = {(1,0): ShipAction.EAST, (-1,0): ShipAction.WEST, (0,1):ShipAction.NORTH, (0,-1): ShipAction.SOUTH, (0,0):None} #Direction to action dictionary
-MAX_INT = np.iinfo(np.int16).max
-MIN_INT = np.iinfo(np.int16).min
+MAX_INT = np.iinfo(np.int32).max
+MIN_INT = np.iinfo(np.int32).min
 
 NEG_AMORT_VALS_EXPLICIT = [None, 2.341, 3.166, 3.751, 4.217, 4.607, 4.946, 5.246, 5.516, 5.762, 5.988, 6.198, 6.393, 6.576, 6.749, 6.912, 7.066, 7.213, 7.354, 7.488, 7.616, 7.74]
 
@@ -349,7 +349,7 @@ def attackLogic(board, attacking_ships):
                not board.cells[square].ship and mb_shipyard.player.halite < 500 and \
                not targeted[square]:
                 targeted[square] = True
-                attack_targets[ship.id] = {'point': square, 'value': 1000, 'target': mb_shipyard.id}
+                attack_targets[ship.id] = {'point': square, 'value': MAX_INT, 'target': mb_shipyard.id}
                 attack_order.append(ship.id)
                 print('attacking shipyard!', board.step)
 
