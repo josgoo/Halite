@@ -21,7 +21,8 @@ NEG_AMORT_VALS_EXPLICIT = [None, 2.341, 3.166, 3.751, 4.217, 4.607, 4.946, 5.246
 GENERAL_DOWNWEIGHT = 0.25 #Downweight for general enemy ships in dominance map
 SPECIFIC_DOWNWEIGHT = 0.75 #Downweight for lighter enemy ships in dominance map (collisions)
 BETA = 0.3 #Weighting to next turn miningLogic
-TAU = 0.25 #Faith in our vectors
+TAU_ATTACKING = 0.25 # Faith in our (attacking) vectors
+TAU_MINING = 0.5 # Faith in our (mining) vectors
 GAMMA_CHANGE = 120 #Turn where we use the other gamma
 GAMMA1_TUNE, GAMMA2_TUNE = -19,-0.56
 GAMMA1_CONST, GAMMA2_CONST = 92.5,4.36 #Tuning parameter for gamma
@@ -53,6 +54,7 @@ DISALLOW_SHIP_SPAWN_STEP = 270
 IGNORE_BORDER_MULTIPLIER_STEP = 330 # what step we should no longer add a multiplier to being within our area border
 RUN_AWAY_SHIP_THRESH = 3 # if we have this number of ships or less in endgame, dont ever convert to dropoff
 ENDGAME_RETURN_BUFFER = 5
+DANGER_CONVERT_THRESH = 7 # if the DANGER is at or above this value and ship has >= 500 halite, make a shipyard
 
 # global variables
 FUTURE_DROPOFF = None
@@ -96,15 +98,25 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
                     this_attack_vals[square]['v'][i] = attack_ship_square_val
 
     return this_attack_vals
+
 def bestAttackTarget(ship_attack_vals, targeted):
     global N_ATTACKING
-    max_val, max_square = 0, None
+    max_val, snd_max_val, max_square, snd_max_square = 0, 0, None, None
     for square in ship_attack_vals:
-        n = N_ATTACKING[ ship_attack_vals[square]['target'] ]
-        if not targeted[square] and n < MAX_ATTACKERS_TO_SHIP and max_val < ship_attack_vals[square]['v'][n]:
-            max_val =ship_attack_vals[square]['v'][n]
-            max_square = square
-    return (max_square, max_val)
+        n = N_ATTACKING[ship_attack_vals[square]['target']]
+        if not targeted[square] and n < MAX_ATTACKERS_TO_SHIP:
+            curr_attack_val = ship_attack_vals[square]['v'][n]
+            # if new is highest, shift down max to 2nd
+            if curr_attack_val > max_val:
+                snd_max_val = max_val
+                snd_max_square = max_square
+                max_val = curr_attack_val
+                max_square = square
+            elif curr_attack_val > snd_max_val:
+                snd_max_val = curr_attack_val
+                snd_max_square = square
+    return (max_square, max_val, snd_max_val)
+
 def moveToPlus(move_prob, plus):
     if plus == (2,0):
         return move_prob[(1,0)] * move_prob[(1,0)]
@@ -255,7 +267,8 @@ def attackLogic(board, attacking_ships):
         chooseOpponentToDecimateViaRatio(board)
     if OPPONENT_TO_TARGET != None: #re-evaluate target if the chosen target isn't advantageous enough
         miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in board.players[OPPONENT_TO_TARGET].ships])
-        chooseOpponentToDecimateViaRatio(board)
+        if miners <= OPPONENT_ATTACK_MIN_SHIPS:
+            chooseOpponentToDecimateViaRatio(board)
     # if we are attacking someone but all of our shipyards get destroyed, stop attacking and retreat to original quadrant #TODO: might want better retreat area idea
     if isPastAttackingTime(board) and OPPONENT_TO_TARGET != None and n_yards == 0:
         OPPONENT_TO_TARGET = None
@@ -325,30 +338,31 @@ def attackLogic(board, attacking_ships):
     attack_order = []
     #assign targets to every attacking ship unless we have already assigned all attackers
     while len(attack_targets) < len(attacking_ships) and len(attack_targets) < MAX_ATTACKERS_TO_SHIP * len(attack_point_vals):
-        max_square, max_ship, max_val = None,None,0
+        max_loss_square, max_loss_ship, max_loss_val, max_best_val = None, None, 0, 0
         for ship in attacking_ships:
             if RETURNING[ship.id] or ship.halite > 0:
                 continue
             if ship.id not in attack_targets:
-                (best_square, best_val) = bestAttackTarget(attack_vals[ship.id], targeted)
-                if best_val > max_val:
-                    max_square = best_square
-                    max_ship = ship
-                    max_val = best_val
+                (best_square, best_val, snd_best_val) = bestAttackTarget(attack_vals[ship.id], targeted)
+                if best_val - snd_best_val > max_loss_val:
+                    max_loss_square = best_square
+                    max_loss_ship = ship
+                    max_loss_val = best_val - snd_best_val
+                    max_best_val = best_val
         #If we assigned all available ships
-        if max_ship == None:
+        if max_loss_ship == None:
             break
-        target_ship = attack_vals[max_ship.id][ max_square ]['target']
-        attack_targets[max_ship.id] = {'point': max_square, 'value': max_val, 'target': target_ship}
+        target_ship = attack_vals[max_loss_ship.id][max_loss_square]['target']
+        attack_targets[max_loss_ship.id] = {'point': max_loss_square, 'value': max_best_val, 'target': target_ship}
         #Adjust number of attacking each ship
         N_ATTACKING[target_ship] += 1
-        if max_ship.id in PREV_ATTACK_TARGETS and PREV_ATTACK_TARGETS[max_ship.id]['target']:
-            N_ATTACKING[ PREV_ATTACK_TARGETS[max_ship.id]['target'] ] -= 1
-        targeted[max_square] = True
-        attack_order.append(max_ship.id)
+        if max_loss_ship.id in PREV_ATTACK_TARGETS and PREV_ATTACK_TARGETS[max_loss_ship.id]['target']:
+            N_ATTACKING[PREV_ATTACK_TARGETS[max_loss_ship.id]['target']] -= 1
+        targeted[max_loss_square] = True
+        attack_order.append(max_loss_ship.id)
 
         if logging_mode:
-            log_targeted[str(max_square)] = True
+            log_targeted[str(max_loss_square)] = True
     
     if logging_mode:
         attack_log['targets'] = attack_targets
@@ -575,7 +589,7 @@ def assignTaskToShips(board, targets, attack_point_vals, general_dominance_map, 
         if not RETURNING[ship.id] and not ATTACKING_SHIPS[ship.id]:
             #TODO: Cover case where multiple friendly ships would want to switch to attacking at once but not individually
             this_attack_vals = shipAttackValue(board, ship.position, attack_point_vals)
-            (attack_target, attack_val) = bestAttackTarget(this_attack_vals, assigned)
+            (attack_target, attack_val, _) = bestAttackTarget(this_attack_vals, assigned)
             if targets['mine'][ship.id]['value'] < attack_val * CONVERT_FACTOR/2:
                 ATTACKING_SHIPS[ship.id] = True
             assign_log[ship.id] = {'started': 'mine', 'ended_same': not ATTACKING_SHIPS[ship.id], 'mine_val': targets['mine'][ship.id]['value'],\
@@ -590,11 +604,12 @@ def assignTaskToShips(board, targets, attack_point_vals, general_dominance_map, 
     return assign_log
 
 def expectedShipAction(board, other_ship):
+    tau = TAU_MINING if other_ship.halite > 0 else TAU_ATTACKING
     enemy_vector = enemy_vectors[other_ship.id]
-    prob_other = (1-TAU) * 0.2
-    prob_x = (enemy_vector[0] / STORED_MOVES) * TAU#The proportion of times enemy moved in certain direction * confidence
+    prob_other = (1 - tau) * 0.2
+    prob_x = (enemy_vector[0] / STORED_MOVES) * tau#The proportion of times enemy moved in certain direction * confidence
     prob_x = prob_x + prob_other if prob_x >= 0 else prob_x - prob_other
-    prob_y = (enemy_vector[1] / STORED_MOVES) * TAU  # + (1-confidence) * random move in that direction
+    prob_y = (enemy_vector[1] / STORED_MOVES) * tau  # + (1-confidence) * random move in that direction
     prob_y = prob_y + prob_other if prob_y >= 0 else prob_y - prob_other
     return (prob_x, prob_y, prob_other)
 
@@ -627,7 +642,10 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
         square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
         other_ship = board.cells[square_point].ship
         if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
-            collision_coef = id_to_num_near_ships[other_ship.player_id] + 3     #want this to be closer than before
+            if other_ship.halite == 0:
+                collision_coef = id_to_num_near_ships[other_ship.player_id] + 3     #want this to be closer than before
+            else:
+                collision_coef = 1
             (prob_x, prob_y, prob_other) = expectedShipAction(board, other_ship)
             for (x_move, y_move) in MOVES:
                 danger_point = (x_dif + x_move , y_dif + y_move)
@@ -792,7 +810,7 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         # failsafe 2: if a heavy ship is in grave danger and will probably die, it should convert
         if ((FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF) and h >= 500) or \
             (board.step >= 399 and ship.halite >= 500 and not board.cells[new_point].shipyard) or \
-            (ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= 6):
+            (ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= DANGER_CONVERT_THRESH):
             # failsafe 3: if we are in endgame and have few ships, never spawn a shipyard and run away instead
             if board.step <= ENDGAME_STEP or len(board.current_player.ships) >= RUN_AWAY_SHIP_THRESH:
                 ship.next_action = ShipAction.CONVERT
@@ -938,10 +956,6 @@ def returnMiningShips(board, targets, nsv, dominance_map, targeted):
 
 def nearestDropoff(board, ship_point, h=0):
     global NEAREST_DROPOFF, BEST_NEW_DROPOFF, FUTURE_DROPOFF, CENTER, CENTER_VAL
-    if (ship_point, h, BEST_NEW_DROPOFF, FUTURE_DROPOFF) in NEAREST_DROPOFF:
-        return NEAREST_DROPOFF[ (ship_point, h, BEST_NEW_DROPOFF, FUTURE_DROPOFF) ]
-    size = board.configuration.size
-    min_distance, min_pos, orig_dist = MAX_INT, None, 0
     #only look at future dropoffs if we have enough money to fund them
     if FUTURE_DROPOFF and board.current_player.halite + h >= 500:
         future_dropoff_list = [FUTURE_DROPOFF]
@@ -950,8 +964,15 @@ def nearestDropoff(board, ship_point, h=0):
     else:
         future_dropoff_list = []
     shipyard_positions = [shipyard.position for shipyard in board.current_player.shipyards]
+    all_dropoffs = shipyard_positions + future_dropoff_list
+    # caching
+    if (ship_point, all_dropoffs) in NEAREST_DROPOFF:
+        return NEAREST_DROPOFF[(ship_point, all_dropoffs)]
+
+    size = board.configuration.size
+    min_distance, min_pos, orig_dist = MAX_INT, None, 0
     dist_tot = 0
-    for yard in shipyard_positions + future_dropoff_list:
+    for yard in all_dropoffs:
         x_dist = abs(ship_point.x - yard.x)
         y_dist = abs(ship_point.y - yard.y)
         #length of traveling wrapping around the sides is the loop size - the forward facing path
@@ -1015,7 +1036,7 @@ def SpawnShips2(board, augmented, assigned, general_dominance_map, attack_point_
         a_list = findAmortizedValueList(board, shipyard.position, dominance=general_dominance_map, discount_distance=False)
         tot_aval = sum([v['value'] for v in a_list[:20]])
         new_attack_vals = shipAttackValue(board, shipyard.position, attack_point_vals)
-        (attack_target, attack_val) = bestAttackTarget(new_attack_vals, assigned)
+        (attack_target, attack_val, _) = bestAttackTarget(new_attack_vals, assigned)
         while next_ship_value >= SHIP_MIN_VAL and len(nsv)< 10:
             idx = 0
             while True:
