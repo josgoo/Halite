@@ -173,14 +173,14 @@ def chooseOpponentToDecimateViaRatio(board):
     max_ratio, max_opponent = 0, None
     neighbors = getAdjacentOpponents(board)
     for opponent in board.opponents:
+        miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in opponent.ships])
         if opponent.id in neighbors:
-            miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in opponent.ships])
             total_cargo = sum([e_ship.halite for e_ship in opponent.ships])
             ratio = total_cargo / len(opponent.ships) if len(opponent.ships) > 0 else 0
             if ratio > max_ratio and miners > OPPONENT_ATTACK_MIN_SHIPS + 2:
                 max_ratio = ratio
                 max_opponent = opponent.id
-            print('miners for {}: {}'.format(opponent.id, miners))
+        print('miners for {}: {}'.format(opponent.id, miners))
 
     OPPONENT_TO_TARGET = max_opponent
     print('targeting: ', OPPONENT_TO_TARGET)
@@ -310,10 +310,10 @@ def attackLogic(board, attacking_ships):
                         capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
                         ap = Point(attack_point[0], attack_point[1])
                         within_multiplier = WITHIN_BOUNDARY_MULTIPLIER if shouldApplyWithinBorderMultiplier(board, ap) else 1
-                        attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
+                        attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
 
                         if logging_mode:
-                            attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + e_ship.halite) * within_multiplier
+                            attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
 
     if logging_mode:
         attack_log['e_ship, point'] = attack_point_vals_log
@@ -780,7 +780,7 @@ def assignProtectors(board, new_ship_avalue):
         if len(board.current_player.ships) >= 16:
             protector = board.cells[shipyard.position].ship
             PROTECT[shipyard.id] = protector.id if protector else None
-        elif one_step_protector:
+        if one_step_protector:
             print("One step protector!")
             PROTECT[shipyard.id] = one_step_protector
     protect_log = {'nsv_a': new_ship_avalue, 'Gamma': Gamma(board.step, new_ship_avalue)}
