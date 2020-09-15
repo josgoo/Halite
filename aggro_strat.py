@@ -873,11 +873,10 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
             assignMove(prot_ship_id)
         # if ship is one away and needs to go back to shipyard, force it back
         elif prot_ship_id and shipyard.position != board.ships[prot_ship_id].position:
-            return_target = {'point':shipyard.position, 'value': 1, 'halite': 0, 'mining_time': 0, 'mined': 0, 'next_val': 0}
             if ATTACKING_SHIPS[prot_ship_id]:
-                targets['attack'][prot_ship_id] = return_target
+                targets['attack'][prot_ship_id] = {'point': shipyard.position, 'value': 1, 'target': None}
             else:
-                targets['mine'][prot_ship_id] = return_target
+                targets['mine'][prot_ship_id] = {'point': shipyard.position, 'value': 1, 'halite': 0, 'mining_time': 0, 'mined': 0, 'next_val': 0}
             assignMove(prot_ship_id)
     return action_dict
 
