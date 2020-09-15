@@ -7,6 +7,7 @@ from kaggle_environments.envs.halite.helpers import *
 
 # constants
 PLUS_SHAPE = [(2,0),(1,1),(0,2),(1,-1),(0,-2),(-1,-1),(-2,0),(-1,1),(1,0),(0,1),(-1,0),(0,-1)] #Point distances for the plus shape
+PLUS_SHAPE_3DIST = [(3,0),(2,1),(1,2),(0,3),(2,0),(1,1),(0,2),(1,0),(0,1),(0,0),(-3,0),(-2,1),(-1,2),(-2,0),(-1,1),(-1,0),(2,-1),(1,-2),(0,-3),(1,-1),(0,-2),(0,-1),(-2,-1),(-1,-2),(-1,-1)]
 #The blur numbers were calculated through a Monte Carlo simulation of the probability a ship starting at 0,0 entered the square after 2 moves (completely randomly)
 PLUS_SHAPE_BLUR = {(2,0): 0.04, (-2,0): 0.04, (1,1): 0.08, (0,2): 0.04, (1,-1): 0.08, (0,-2): 0.04,\
 (-1,-1):0.08, (-1,1): 0.08, (1,0):0.24,(0,1):0.24,(-1,0):0.24,(0,-1):0.24,(0,0):1}
@@ -16,6 +17,7 @@ MAX_INT = np.iinfo(np.int32).max
 MIN_INT = np.iinfo(np.int32).min
 
 NEG_AMORT_VALS_EXPLICIT = [None, 2.341, 3.166, 3.751, 4.217, 4.607, 4.946, 5.246, 5.516, 5.762, 5.988, 6.198, 6.393, 6.576, 6.749, 6.912, 7.066, 7.213, 7.354, 7.488, 7.616, 7.74]
+ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT = [1, 0.25, 0.0625]
 
 # hyperparams
 GENERAL_DOWNWEIGHT = 0.25 #Downweight for general enemy ships in dominance map
@@ -56,6 +58,7 @@ RUN_AWAY_SHIP_THRESH = 3 # if we have this number of ships or less in endgame, d
 ENDGAME_RETURN_BUFFER = 5
 DANGER_CONVERT_THRESH = 7 # if the DANGER is at or above this value and ship has >= 500 halite, make a shipyard
 DOM_MAP_BONUS = 10  # multiplier to make magnitude of dom map affect higher on collisions
+MAX_FARM_LIMIT = 450    # stop farming if a square has at least this much halite
 
 # global variables
 FUTURE_DROPOFF = None
@@ -77,7 +80,7 @@ CENTER, CENTER_VAL = None, MAX_INT
 HAS_DECIMATED = -1
 BORDERS = {}
 IS_FIRST_TIME_CHOOSING_TARGET = True
-BAD_ADJ_TARGETS_TURN_COUNT = 0
+SAFETY = defaultdict(lambda: 0)
 
 log = []
 logging_mode = False
@@ -211,7 +214,7 @@ def getBorders(board):
             elif me + HAS_DECIMATED == 5:
                 return ((0,10), (20,0))
             print("ERROR" + str(HAS_DECIMATED + me))
-            return "ERROR" + str(HAS_DECIMATED + me)
+            raise ValueError("ERROR" + str(HAS_DECIMATED + me))
         if CENTER != None:
             size = board.configuration.size
             tlx = (CENTER.x - 5) % size
@@ -223,18 +226,8 @@ def getBorders(board):
         global BORDERS
         if len(BORDERS) > 0:
             return BORDERS
+        raise ValueError("shouldnt be here ever")
 
-        within = defaultdict(lambda: False)
-        size = board.configuration.size
-        for x in range(size):
-            for y in range(size):
-                square = Point(x,y)
-                friendly_dist = nearestDropoff(board, square)['orig_dist']
-                enemy_dist = nearestEDropoff(board, square)
-                if friendly_dist < enemy_dist:
-                    within[square] = True
-        BORDERS = within
-        return within
 
 def getBordersOfQuadrantsFromIds(pid1, pid2):
     pid_sum = pid1 + pid2
@@ -258,31 +251,35 @@ def withinBorders(board, point):
         return borders[point]
     #if borders is not a dictionary, it must be the half of the map
     ((tlx,tly), (brx,bry)) = borders
+    dist = 0
     if tlx < brx and (point.x < tlx or point.x > brx):
-        return False
+        x_dist_tl = tlx - point.x
+        x_dist_br = point.x - brx
+        dist += min(min(x_dist_tl, size - x_dist_tl), min(x_dist_br, size - x_dist_br))
     if brx < tlx and (brx < point.x < tlx):
-        return False
+        dist += min(tlx - point.x, point.x - brx)
     if tly > bry and (point.y > tly or point.y < bry):
-        return False
+        y_dist_tl = point.y - tly
+        y_dist_br = bry - point.y
+        dist += min(min(y_dist_tl, size - y_dist_tl), min(y_dist_br, size - y_dist_br))
     if tly < bry and (tly < point.y < bry):
-        return False
-    return True
+        dist += min(bry - point.y, point.y - tly)
+    return dist
 
-def shouldApplyWithinBorderMultiplier(board, point):
+def isFarmingMode(board):
     # if we have more than half the total ships, let the borders loose
     if len(board.current_player.ships) >= len(board.ships) / 2:
         return False
     return isPastAttackingTime(board) and \
            board.step < IGNORE_BORDER_MULTIPLIER_STEP and \
-           OPPONENT_TO_TARGET == None and \
-           withinBorders(board, point)
+           OPPONENT_TO_TARGET == None
 
 def isPastAttackingTime(board):
     return board.step >= 80 or len(board.current_player.ships) >= 16
 
 # only want to lose a ship destroying shipyard if we are targeting them or its in our borders
 def isGoodToDestroyShipyard(board, e_shipyard):
-    return OPPONENT_TO_TARGET == e_shipyard.player_id or withinBorders(board, e_shipyard.position)
+    return OPPONENT_TO_TARGET == e_shipyard.player_id or withinBorders(board, e_shipyard.position) == 0
 
 def attackLogic(board, attacking_ships):
     global logging_mode
@@ -359,11 +356,16 @@ def attackLogic(board, attacking_ships):
                     attack_point = ( (possible_point.x + rel_x)%size , (possible_point.y + rel_y)%size )
                     capture_prob = moveToPlus( move_prob, (rel_x, rel_y) )
                     ap = Point(attack_point[0], attack_point[1])
-                    within_multiplier = WITHIN_BOUNDARY_MULTIPLIER if shouldApplyWithinBorderMultiplier(board, ap) else 1
-                    attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
+
+                    if isFarmingMode(board): 
+                        dist_from_border = withinBorders(board, ap)
+                        dist_downweight = ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT[dist_from_border] if dist_from_border < len(ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT) else 0
+                    else:
+                        dist_downweight = 1
+                    attack_point_vals[e_ship.id][attack_point] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * dist_downweight
 
                     if logging_mode:
-                        attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * within_multiplier
+                        attack_point_vals_log[e_ship.id][str(attack_point)] += capture_prob * prob_actualized * (ESHIP_VAL + min(e_ship.halite, 500)) * dist_downweight
 
     if logging_mode:
         attack_log['e_ship, point'] = attack_point_vals_log
@@ -525,16 +527,18 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
                 continue
             
             def neg_amortized_value(mining_time, dist):
+                if isFarmingMode(board) and withinBorders(board, target) != 0:
+                    return 0
                 val = -((1 - 0.75**mining_time) * H) / (dist + mining_time)
                 if dominance:
                     val *= dominance[(point_x, point_y)]
-                if shouldApplyWithinBorderMultiplier(board, target):
-                    val *= WITHIN_BOUNDARY_MULTIPLIER
                 if board.step < 30:
                     starting_locations = [Point(5,15), Point(15,15), Point(5,5), Point(15,5)]
                     first_dropoff_dist = squareDistance(starting_locations[board.current_player.id], target) if len(board.current_player.shipyards) > 0 else 1
                     if first_dropoff_dist <= 10:
                         val *= first_dropoff_dist
+                if isFarmingMode(board) and withinBorders(board, target) == 0 and H <= MAX_FARM_LIMIT:
+                    val *= max(1 - SAFETY[target], 0)
                 return val
             
             def find_opt_mining_time(manhattan_dist):
@@ -560,6 +564,17 @@ def findAmortizedValueList(board, ship_point, dominance = None, max_dist=21, sto
     #Doesn't currently break ties by putting shorter path first
     targets = sorted(targets, key=lambda x: x['value'], reverse=True) #sort squares by square_value
     return targets
+
+def updateSafetyValues(board):
+    global SAFETY
+    SAFETY = defaultdict(lambda: 0)
+    for ship in board.current_player.ships:
+        if ATTACKING_SHIPS[ship.id] and not RETURNING[ship.id]:
+            for (x_move, y_move) in PLUS_SHAPE_3DIST:
+                dist = abs(x_move) + abs(y_move)
+                square = Point((ship.position.x + x_move) % size, (ship.position.y + y_move) % size)
+                SAFETY[square] += (0.75 ** dist) / 2
+
 def miningLogic(board, ships, dominance_map, assigned_attacks):
     global DISTANCE_THRESHOLD
     size = board.configuration.size
