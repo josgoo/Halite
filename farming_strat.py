@@ -17,7 +17,7 @@ MAX_INT = np.iinfo(np.int32).max
 MIN_INT = np.iinfo(np.int32).min
 
 NEG_AMORT_VALS_EXPLICIT = [None, 2.341, 3.166, 3.751, 4.217, 4.607, 4.946, 5.246, 5.516, 5.762, 5.988, 6.198, 6.393, 6.576, 6.749, 6.912, 7.066, 7.213, 7.354, 7.488, 7.616, 7.74]
-ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT = [1, 0.25, 0.0625]
+ATTACK_FARM_OUTSIDE_BORDER_DOWNWEIGHT = [1, 0.1]
 
 # hyperparams
 GENERAL_DOWNWEIGHT = 0.25 #Downweight for general enemy ships in dominance map
