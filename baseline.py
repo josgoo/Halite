@@ -220,7 +220,7 @@ def distanceDiscount(board, point):
     return discount
 
 def isPastAttackingTime(board):
-    return board.step >= 80 or len(board.current_player.ships) >= 16
+    return board.step >= 30 or len(board.current_player.ships) >= 16
 
 def attackLogic(board, attacking_ships):
     global logging_mode
@@ -549,7 +549,7 @@ def miningLogic(board, ships, dominance_map, assigned_attacks):
 
 def assignTaskToShips(board, targets, attack_point_vals, general_dominance_map, augmented, assigned):
     global ATTACKING_SHIPS
-    CONVERT_FACTOR = 14 if board.step < 300 else 1
+    CONVERT_FACTOR = 100 if board.step < 300 else 1
     assign_log = {}
     for ship in board.current_player.ships:
         if not RETURNING[ship.id] and not ATTACKING_SHIPS[ship.id]:
