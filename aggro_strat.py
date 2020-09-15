@@ -78,7 +78,7 @@ BORDERS = {}
 
 log = []
 logging_mode = True
-print_log = True
+print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
@@ -673,9 +673,11 @@ def factorCollisionsIntoActions(board, ship, capture_cost):
                         # weighting for any other point can never be more than this, means enemy ship in every PLUS square around us
                         MAX_COLLISION_COEF = len(PLUS_SHAPE)
                         weighting[danger_point] += MAX_COLLISION_COEF * 1 * -capture_cost
+
+    for (x_move, y_move) in MOVES:
         other_shipyard = board.cells[square_point].shipyard
         if other_shipyard and other_shipyard.player_id != board.current_player_id:
-            weighting[(x_dif, y_dif)] += -capture_cost
+            weighting[(x_move, y_move)] += -capture_cost
     return weighting
 
 def findVectorComponents(board, start, end):
@@ -696,43 +698,71 @@ def findVectorComponents(board, start, end):
     vec_x = (end.x - start.x) / total_dist * x_mult
     vec_y = (end.y - start.y) / total_dist * y_mult
     return (vec_x, vec_y)
-def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
+def findDesiredAction(board, ship, end, amortized_value, specific_dom_map, can_mine=True):
     start = ship.position
     size = board.configuration.size
     directions = {}
     (vec_x, vec_y) = findVectorComponents(board, start, end)
     collision_cost = 500 + ship.halite + amortized_value - gamma_pdf(board.step)
     collision_weightings = factorCollisionsIntoActions(board, ship, collision_cost)
+
+    left_point = ((ship.position.x - 1) % size, ship.position.y)
+    right_point = ((ship.position.x + 1) % size, ship.position.y)
     if vec_x != 0:
-        directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)]
-        directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)]
+        directions[(1,0)] = vec_x * amortized_value + collision_weightings[(1,0)] + specific_dom_map[right_point]
+        directions[(-1,0)] = -vec_x * amortized_value + collision_weightings[(-1,0)] + specific_dom_map[left_point]
     else:
-        directions[(1,0)] = -amortized_value + collision_weightings[(1,0)]
-        directions[(-1,0)] = -amortized_value + collision_weightings[(-1,0)]
+        directions[(1,0)] = -amortized_value + collision_weightings[(1,0)] + specific_dom_map[right_point]
+        directions[(-1,0)] = -amortized_value + collision_weightings[(-1,0)] + specific_dom_map[left_point]
+
+    up_point = (ship.position.x, (ship.position.y + 1) % size)
+    down_point = (ship.position.x, (ship.position.y - 1) % size)
     if vec_y != 0:
-        directions[(0,1)] = vec_y * amortized_value + collision_weightings[(0,1)]
-        directions[(0,-1)] = -vec_y * amortized_value + collision_weightings[(0,-1)]
+        directions[(0,1)] = vec_y * amortized_value + collision_weightings[(0,1)] + specific_dom_map[up_point]
+        directions[(0,-1)] = -vec_y * amortized_value + collision_weightings[(0,-1)] + specific_dom_map[down_point]
     else:
-        directions[(0,1)] = -amortized_value + collision_weightings[(0,1)]
-        directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)]
+        directions[(0,1)] = -amortized_value + collision_weightings[(0,1)] + specific_dom_map[up_point]
+        directions[(0,-1)] = -amortized_value + collision_weightings[(0,-1)] + specific_dom_map[down_point]
     #staying still is divided by an additional 2 to account for the additional vec_x/vec_y weighting
     #If end.x-start.x equaled end.y-start.y then  it should be 1/2
     mb_enemy_yard = board.cells[Point((start.x + np.sign(vec_x)) % size, (start.y + np.sign(vec_y)) % size)].shipyard
     # enemy yard is obstructing us if it is in the direction we want to move, we want to move strictly vertically or horizontally, and we have another non-dangerous move
     is_yard_obstruction = mb_enemy_yard and mb_enemy_yard.player_id != board.current_player_id and (vec_x == 0 or vec_y == 0) and any([w == 0 for w in collision_weightings.values()])
-    # staying still while attacking mines halite
-    is_attack_force_mine = ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0
+    # staying still while attacking mines halite, but its ok if we're returning
+    is_attack_force_mine = ATTACKING_SHIPS[ship.id] and board.cells[start].halite > 0 and not RETURNING[ship.id]
     if not (is_attack_force_mine) and not (is_yard_obstruction):
-        directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)]
+        directions[(0,0)] = (board.cells[start].halite/4/2 if can_mine else 0) + collision_weightings[(0,0)] # don't want to add dom map for staying still
 
     return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
 
+def isShipyardInDangerAndOneStepProtectable(board, shipyard):
+    size = board.configuration.size
+    is_in_danger = False
+    one_step_protector = None
+    for (x_move, y_move) in MOVES:
+        square = Point((shipyard.position.x + x_move) % size, (shipyard.position.y + y_move) % size)
+        adj_ship = board.cells[square].ship
+        if adj_ship:
+            if adj_ship.player_id != board.current_player_id:
+                is_in_danger = True
+            else:
+                one_step_protector = adj_ship.id
+    
+    if is_in_danger:
+        return one_step_protector
+    else:
+        return None
+
+
 def assignProtectors(board, new_ship_avalue):
     PROTECT = defaultdict(lambda: None)
-    if len(board.current_player.ships) >= 16:
-        for shipyard in board.current_player.shipyards:
+    for shipyard in board.current_player.shipyards:
+        one_step_protector = isShipyardInDangerAndOneStepProtectable(board, shipyard)
+        if len(board.current_player.ships) >= 16:
             protector = board.cells[shipyard.position].ship
             PROTECT[shipyard.id] = protector.id if protector else None
+        elif one_step_protector:
+            PROTECT[shipyard.id] = one_step_protector
     protect_log = {'nsv_a': new_ship_avalue, 'Gamma': Gamma(board.step, new_ship_avalue)}
     return (PROTECT, protect_log)
 
@@ -755,7 +785,7 @@ def prioritizeShipOrder(board, mining_order, attacking_order):
     returning = sorted(mine_returning + attack_returning, key=lambda k: board.ships[k].halite, reverse=True)
     return returning + mine_not_returning + attack_not_returning
 
-def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, PROTECT):
+def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, PROTECT, specific_dominance_map):
     global RETURNING, DANGER, logging_mode
     size = board.configuration.size
     def assignMove(ship_id):
@@ -766,7 +796,7 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         if ship.position == target and space_taken[ship.position] != False and space_taken[ship.position] != 'spawn'\
                 and ATTACKING_SHIPS[space_taken[ship.position]['id']] == ATTACKING_SHIPS[ship.id]:
             target = space_taken[ship.position]['target']
-        (actions, values, collisions) = findDesiredAction(board, ship, target, val, can_mine = not RETURNING[ship_id] and not ATTACKING_SHIPS[ship_id])
+        (actions, values, collisions) = findDesiredAction(board, ship, target, val, specific_dominance_map[ship_id], can_mine = not RETURNING[ship_id] and not ATTACKING_SHIPS[ship_id])
         ship_point = ship.position
         action_dict['directions'][ship_id] = remap_keys(values)
         action_dict['collisions'][ship_id] = remap_keys(collisions)
@@ -780,40 +810,62 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
             if space_taken[new_point] == 'spawn': #Undo the spawning of the ship
                 board.cells[new_point].shipyard.next_action = None
                 break
+            # top point is taken but we have another action
+            if space_taken[new_point] and len(actions) < idx:
+                swap_ship_alt_space = space_taken[new_point]['alternative']
+                snd_direction = actions[idx]
+                # person who is taking top action has a non-None, free alternative, and our alternative is free
+                if swap_ship_alt_space['point'] and space_taken[swap_ship_alt_space['point']] == False and space_taken[snd_direction] == False:
+                    swap_value = values[top_direction] + swap_ship_alt_space['value']
+                    no_swap_value = values[snd_direction] + space_taken[new_point]['value']
+                    if swap_value > no_swap_value:
+                        swap_ship = board.ships[space_taken[new_point]['id']]
+                        swap_ship.next_action = DIR_TO_ACTION[swap_ship_alt_space['dir']]
+                        alt_target = targets['attack'][swap_ship.id]['point'] if ATTACKING_SHIPS[swap_ship.id] else targets['mine'][swap_ship.id]['point']
+                        space_taken[swap_ship_alt_space['point']] = {'target': alt_target, 'id': swap_ship.id, 'value': swap_ship_alt_space['value'], 'alternative': {'point': None, 'dir': None, 'value': 0}}
+                        print('did the tihng!', board.step)
+                        break
             if len(actions) == idx: #If this happens we are fucked, two friendly ships are colliding
                 for force_dir in actions:
                     force_point = Point((ship_point.x + force_dir[0]) % size, (ship_point.y + force_dir[1]) % size)
                     alternative = space_taken[force_point]['alternative']
                     #If a blocking ship can move somewhere else
-                    if alternative['point'] and not space_taken[ alternative['point'] ]:
+                    if alternative['point'] and not space_taken[alternative['point']]:
                         #Move the blocking ship to the alternative spot
-                        blocking_ship = board.ships[ space_taken[force_point]['id'] ]
-                        blocking_ship.next_action = DIR_TO_ACTION[ alternative['dir'] ]
+                        blocking_ship = board.ships[space_taken[force_point]['id']]
+                        blocking_ship.next_action = DIR_TO_ACTION[alternative['dir']]
                         alt_target = targets['attack'][blocking_ship.id]['point'] if ATTACKING_SHIPS[blocking_ship.id] else targets['mine'][blocking_ship.id]['point']
-                        space_taken[ alternative['point'] ] = {'target':alt_target, 'id':blocking_ship.id, 'alternative': {'point': None, 'dir': None}}
+                        space_taken[alternative['point']] = {'target': alt_target, 'id': blocking_ship.id, 'value': alternative['value'], 'alternative': {'point': None, 'dir': None, 'value': 0}}
                         #Set up the current ship to move into the blocking ship position
                         new_point = force_point
                         top_direction = force_dir
+                        print('did the crazy other thing', board.step)
                         break
                 break
         #If there are more options than the chosen one left
         if len(actions) > idx:
             alt_dir = actions[idx]
             alt_point = Point((ship_point.x + alt_dir[0]) % size, (ship_point.y + alt_dir[1]) % size)
+            alt_value = values[alt_dir]
         else:
-            alt_dir, alt_point = None, None
-        space_taken[new_point] = {'target':target, 'id':ship.id, 'alternative': {'point': alt_point, 'dir': alt_dir}}
+            alt_dir, alt_point, alt_value = None, None, 0
+        space_taken[new_point] = {'target': target, 'id': ship.id, 'value': values[top_direction], 'alternative': {'point': alt_point, 'dir': alt_dir, 'value': alt_value}}
         ship.next_action = DIR_TO_ACTION[top_direction]
         action_dict['actions'][ship_id] = top_direction
         global FUTURE_DROPOFF
-        h = board.current_player.halite + ship.halite
+        reg_should_convert = ((FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or \
+                             (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF)) and \
+                             board.current_player.halite + ship.halite >= 500
         # failsafe 1: if a heavy ship can't reach a dropoff before game ends, it should convert
+        failsafe_near_dropoff = nearestDropoff(board, ship.position)
+        failsafe_convert_1 = failsafe_near_dropoff and board.step >= 400 - failsafe_near_dropoff['dist'] and ship.halite >= 500
         # failsafe 2: if a heavy ship is in grave danger and will probably die, it should convert
-        if ((FUTURE_DROPOFF and ship.position == FUTURE_DROPOFF) or (BEST_NEW_DROPOFF and ship.position == BEST_NEW_DROPOFF) and h >= 500) or \
-            (board.step >= 399 and ship.halite >= 500 and not board.cells[new_point].shipyard) or \
-            (ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= DANGER_CONVERT_THRESH):
-            # failsafe 3: if we are in endgame and have few ships, never spawn a shipyard and run away instead
-            if board.step <= ENDGAME_STEP or len(board.current_player.ships) >= RUN_AWAY_SHIP_THRESH:
+        failsafe_convert_2 = ship.halite >= 500 and DANGER[ship.id][board.step % len(DANGER[ship.id])] >= DANGER_CONVERT_THRESH
+        if reg_should_convert or failsafe_convert_1 or failsafe_convert_2:
+            # failsafe 3: if we have few ships and not enough halite to make shipyard and new ship, never spawn a shipyard and run away instead
+            if len(board.current_player.ships) <= RUN_AWAY_SHIP_THRESH and board.current_player.halite + max([s.halite for s in board.current_player.ships]) < 1000:
+                pass
+            else:
                 ship.next_action = ShipAction.CONVERT
                 FUTURE_DROPOFF = None
                 space_taken[new_point] = False
@@ -835,8 +887,16 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         if not protector:
             assignMove(ship_id)
     for shipyard in board.current_player.shipyards:
-        if space_taken[shipyard.position] and PROTECT[shipyard.id]:
-            assignMove(PROTECT[shipyard.id])
+        prot_ship_id = PROTECT[shipyard.id]
+        if space_taken[shipyard.position] and prot_ship_id:
+            assignMove(prot_ship_id)
+        # if ship is one away and needs to go back to shipyard, force it back
+        elif prot_ship_id and shipyard.position != board.ships[prot_ship_id].position:
+            if ATTACKING_SHIPS[prot_ship_id]:
+                targets['attack'][prot_ship_id] = {'point': shipyard.position, 'value': 1, 'target': None}
+            else:
+                targets['mine'][prot_ship_id] = {'point': shipyard.position, 'value': 1, 'halite': 0, 'mining_time': 0, 'mined': 0, 'next_val': 0}
+            assignMove(prot_ship_id)
     return action_dict
 
 def findAllNearestDists(board):
@@ -1340,7 +1400,7 @@ def agent(obs, config):
         end_prioritize = time.time()
 
     # assign moves to ships
-    actions = assignMovesToShips(board, prioritized_order, targets, spawned_points, new_ship_avalue, protect)
+    actions = assignMovesToShips(board, prioritized_order, targets, spawned_points, new_ship_avalue, protect, dominance_map)
     if logging_mode:
         step_log['ship_actions'] = actions
         step_log['protect'] = protect_log
@@ -1405,8 +1465,10 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
+
+    if logging_mode:
         if board.step == 395:
             with open('log.txt', 'w') as f:
                 json.dump(log, f)
-
+    print(board.step)
     return my.next_actions
