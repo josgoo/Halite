@@ -186,7 +186,7 @@ def isDecimated(board):
 
 def chooseOpponentToDecimateViaRatio(board):
     global HAS_DECIMATED, OPPONENT_TO_TARGET, IS_FIRST_TIME_CHOOSING_TARGET
-    if isFarmingMode(board):
+    if isFarmingMode(board) and not IS_FIRST_TIME_CHOOSING_TARGET:
         return
     max_ratio, max_opponent = 0, None
     neighbors = getAdjacentOpponents(board)
