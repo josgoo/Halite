@@ -84,11 +84,12 @@ SAFETY = defaultdict(lambda: 0)
 
 log = []
 logging_mode = True
-print_log = True
+print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
     specific_dominance = defaultdict(lambda: 1)
+    size = board.configuration.size
 
     this_attack_vals = defaultdict(lambda: {'v': [0]*MAX_ATTACKERS_TO_SHIP,'target':None})
     for e_ship in attack_point_vals:
@@ -103,6 +104,14 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
                     this_attack_vals[square]['target'] = e_ship
                 if this_attack_vals[square]['target'] == e_ship:
                     this_attack_vals[square]['v'][i] = attack_ship_square_val
+
+    # add value for protecting squares
+    for (x_move, y_move) in PLUS_SHAPE_3DIST:
+        dist = abs(x_move) + abs(y_move)
+        square = Point((ship_pos.x + x_move) % size, (ship_pos.y + y_move) % size)
+        square_halite = board.cells[square].halite
+        for i in range(MAX_ATTACKERS_TO_SHIP):
+            this_attack_vals[square]['v'][i] += (0.75 ** dist) / 2 * 1.02 * square_halite
 
     return this_attack_vals
 
@@ -265,6 +274,8 @@ def withinBorders(board, point):
     return dist
 
 def isFarmingMode(board):
+    # TODO: ETESTING REMOVE
+    return isPastAttackingTime(board)
     # if we have more than half the total ships, let the borders loose
     if len(board.current_player.ships) >= len(board.ships) / 2:
         return False
@@ -1557,6 +1568,7 @@ def agent(obs, config):
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
 
+    print(board.step, isFarmingMode(board))
     if board.step == 300:
         with open('log.txt', 'w') as outfile:
             json.dump(log, outfile)
