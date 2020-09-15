@@ -727,12 +727,34 @@ def findDesiredAction(board, ship, end, amortized_value, can_mine = True):
 
     return (sorted(directions, key=lambda k: directions[k], reverse=True), directions, collision_weightings)
 
+def isShipyardInDangerAndOneStepProtectable(board, shipyard):
+    size = board.configuration.size
+    is_in_danger = False
+    one_step_protector = None
+    for (x_move, y_move) in MOVES:
+        square = Point((shipyard.position.x + x_move) % size, (shipyard.position.y + y_move) % size)
+        adj_ship = board.cells[square].ship
+        if adj_ship:
+            if adj_ship.player_id != board.current_player_id:
+                is_in_danger = True
+            else:
+                one_step_protector = adj_ship.id
+    
+    if is_in_danger:
+        return one_step_protector
+    else:
+        return None
+
+
 def assignProtectors(board, new_ship_avalue):
     PROTECT = defaultdict(lambda: None)
-    if len(board.current_player.ships) >= 16:
-        for shipyard in board.current_player.shipyards:
+    for shipyard in board.current_player.shipyards:
+        one_step_protector = isShipyardInDangerAndOneStepProtectable(board, shipyard)
+        if len(board.current_player.ships) >= 16:
             protector = board.cells[shipyard.position].ship
             PROTECT[shipyard.id] = protector.id if protector else None
+        elif one_step_protector:
+            PROTECT[shipyard.id] = one_step_protector
     protect_log = {'nsv_a': new_ship_avalue, 'Gamma': Gamma(board.step, new_ship_avalue)}
     return (PROTECT, protect_log)
 
@@ -840,8 +862,17 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
         if not protector:
             assignMove(ship_id)
     for shipyard in board.current_player.shipyards:
-        if space_taken[shipyard.position] and PROTECT[shipyard.id]:
-            assignMove(PROTECT[shipyard.id])
+        prot_ship_id = PROTECT[shipyard.id]
+        if space_taken[shipyard.position] and prot_ship_id:
+            assignMove(prot_ship_id)
+        # if ship is one away and needs to go back to shipyard, force it back
+        elif prot_ship_id and shipyard.position != board.ships[prot_ship_id].position:
+            return_target = {'point':shipyard.position, 'value': 1, 'halite': 0, 'mining_time': 0, 'mined': 0, 'next_val': 0}
+            if ATTACKING_SHIPS[prot_ship_id]:
+                targets['attack'][prot_ship_id] = return_target
+            else:
+                targets['mine'][prot_ship_id] = return_target
+            assignMove(prot_ship_id)
     return action_dict
 
 def findAllNearestDists(board):
