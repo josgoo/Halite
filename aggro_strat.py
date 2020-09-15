@@ -69,6 +69,7 @@ SQUARE_AVALS = defaultdict(lambda: 0)
 OPPONENT_TO_TARGET = None
 shipyard_occupied = defaultdict(lambda: defaultdict(lambda: None)) #ship scheduled to be on a shipyard on a certain turn
 NEAREST_DROPOFF = {}
+NEAREST_EDROPOFF = {}
 ATTACKING_SHIPS = defaultdict(lambda: False)
 DANGER = defaultdict(lambda: [0,0,0])
 CENTER, CENTER_VAL = None, MAX_INT
@@ -980,7 +981,7 @@ def nearestDropoff(board, ship_point, h=0):
         distance = min(x_dist, size-x_dist) + min(y_dist, size-y_dist)
         dist_tot += distance
         orig_dist = distance
-        shipyard = board.cells[ yard ].shipyard
+        shipyard = board.cells[yard].shipyard
         if shipyard:
             while shipyard_occupied[ shipyard ][board.step + distance]:
                 distance += 1
@@ -993,11 +994,11 @@ def nearestDropoff(board, ship_point, h=0):
         CENTER_VAL = dist_tot
         CENTER = ship_point
     return {'dist':min_distance, 'point': min_pos, 'orig_dist': orig_dist}
-NEAREST_EDROPOFF = {}
+
 def nearestEDropoff(board, square):
     global NEAREST_EDROPOFF
     if square in NEAREST_EDROPOFF:
-        return NEAREST_EDROPOFF[ square ]
+        return NEAREST_EDROPOFF[square]
 
     size = board.configuration.size
     min_distance = MAX_INT
@@ -1006,7 +1007,7 @@ def nearestEDropoff(board, square):
             distance = manhattan_distance(square, e_yard.position)
             min_distance = min(distance, min_distance)
 
-    NEAREST_EDROPOFF[ square ] = min_distance
+    NEAREST_EDROPOFF[square] = min_distance
     return min_distance
 def newMiningShipValue(board, init, general_dominance_map, augmented, assigned):
     a_list = findAmortizedValueList(board, init, dominance=general_dominance_map, discount_distance=False)
