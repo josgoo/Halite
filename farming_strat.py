@@ -114,7 +114,7 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
             square_halite = board.cells[square].halite
             if square_halite <= MAX_FARM_LIMIT:
                 for i in range(MAX_ATTACKERS_TO_SHIP):
-                    this_attack_vals[square]['v'][i] += ((0.75 ** dist) / 2 * 1.02 * square_halite) / (SAFETY_NUM[square] if SAFETY_NUM[square] > 0 else 1)
+                    this_attack_vals[square]['v'][i] += ((0.75 ** dist) / 2 * 0.02 * square_halite) / (SAFETY_NUM[square] if SAFETY_NUM[square] > 0 else 1)
 
     return this_attack_vals
 
@@ -1577,7 +1577,7 @@ def agent(obs, config):
                              end - end_assign_tasks))
 
     print(board.step, isFarmingMode(board))
-    if board.step == 300:
+    if board.step == 225:
         with open('log.txt', 'w') as outfile:
             json.dump(log, outfile)
 
