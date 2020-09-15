@@ -83,8 +83,8 @@ IS_FIRST_TIME_CHOOSING_TARGET = True
 SAFETY = defaultdict(lambda: 0)
 
 log = []
-logging_mode = False
-print_log = False
+logging_mode = True
+print_log = True
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
     ship = board.cells[ship_pos].ship
@@ -1551,5 +1551,9 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
+                             
+    if board.step == 300:
+        with open('log.txt', 'w') as outfile:
+            json.dump(log, outfile)
 
     return my.next_actions
