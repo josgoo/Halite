@@ -58,7 +58,7 @@ RUN_AWAY_SHIP_THRESH = 3 # if we have this number of ships or less in endgame, d
 ENDGAME_RETURN_BUFFER = 5
 DANGER_CONVERT_THRESH = 7 # if the DANGER is at or above this value and ship has >= 500 halite, make a shipyard
 DOM_MAP_BONUS = 10  # multiplier to make magnitude of dom map affect higher on collisions
-MAX_FARM_LIMIT = 450    # stop farming if a square has at least this much halite
+MAX_FARM_LIMIT = 425    # stop farming if a square has at least this much halite
 
 # global variables
 FUTURE_DROPOFF = None
@@ -114,7 +114,7 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
             square_halite = board.cells[square].halite
             if square_halite <= MAX_FARM_LIMIT:
                 for i in range(MAX_ATTACKERS_TO_SHIP):
-                    this_attack_vals[square]['v'][i] += ((0.75 ** dist) / 2 * 0.02 * square_halite) / (SAFETY_NUM[square] if SAFETY_NUM[square] > 0 else 1)
+                    this_attack_vals[square]['v'][i] += ((0.75 ** dist) / 2 * 1.02 * square_halite) / (SAFETY_NUM[square] if SAFETY_NUM[square] > 0 else 1)
 
     return this_attack_vals
 
@@ -279,6 +279,8 @@ def withinBorders(board, point):
     return dist
 
 def isFarmingMode(board):
+    if board.step >= 80:
+        return True
     # if we have more than half the total ships, let the borders loose
     if len(board.current_player.ships) >= len(board.ships) / 2:
         return False
@@ -691,14 +693,16 @@ def assignTaskToShips(board, targets, attack_point_vals, general_dominance_map, 
             #TODO: Cover case where multiple friendly ships would want to switch to attacking at once but not individually
             this_attack_vals = shipAttackValue(board, ship.position, attack_point_vals)
             (attack_target, attack_val, _) = bestAttackTarget(this_attack_vals, assigned)
-            if targets['mine'][ship.id]['value'] < attack_val * CONVERT_FACTOR/2:
+            if (not isFarmingMode(board) and targets['mine'][ship.id]['value'] < attack_val * CONVERT_FACTOR/2) or (isFarmingMode(board) and ship.halite > 0):
                 ATTACKING_SHIPS[ship.id] = True
+                if isFarmingMode(board):
+                    RETURNING[ship.id] = True
             assign_log[ship.id] = {'started': 'mine', 'ended_same': not ATTACKING_SHIPS[ship.id], 'mine_val': targets['mine'][ship.id]['value'],\
                          'attack_val': attack_val}
 
         elif not RETURNING[ship.id] and ATTACKING_SHIPS[ship.id]:
             (mining_target, mining_val) = newMiningShipValue(board, ship.position, general_dominance_map, augmented, assigned)
-            if targets['attack'][ship.id]['value'] * CONVERT_FACTOR < mining_val:
+            if (not isFarmingMode(board) and targets['attack'][ship.id]['value'] * CONVERT_FACTOR < mining_val) or (isFarmingMode(board) and board.cells[ship.position].halite >= MAX_FARM_LIMIT):
                 ATTACKING_SHIPS[ship.id] = False
                 assigned[mining_target] = True
             assign_log[ship.id] = {'started': 'attack', 'ended_same': ATTACKING_SHIPS[ship.id], 'mine_val': mining_val, 'attack_val': targets['attack'][ship.id]['value']}
