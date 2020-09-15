@@ -638,7 +638,9 @@ def updateDanger(board):
         for (x_dif, y_dif) in PLUS_SHAPE:
             square_point = Point((ship.position.x + x_dif) % size , (ship.position.y + y_dif) % size)
             other_ship = board.cells[square_point].ship
-            if other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite:
+            other_shipyard = board.cells[square_point].shipyard
+            if (other_ship and other_ship.player_id != board.current_player_id and other_ship.halite <= ship.halite) or \
+               (other_shipyard and other_shipyard.player_id != board.current_player_id):
                 if (x_dif, y_dif) in MOVES:
                     DANGER[ship.id][board.step % len(DANGER[ship.id])] += 2
                 else:
@@ -1483,8 +1485,8 @@ def agent(obs, config):
                              end - end_assign_tasks))
 
     if logging_mode:
-        if board.step == 395:
-            with open('log.txt', 'w') as f:
+        if board.step == 95:
+            with open('new_log.txt', 'w') as f:
                 json.dump(log, f)
     print(board.step)
     return my.next_actions

@@ -500,9 +500,9 @@ def agent(obs, config):
     log.append(step_log)
     #print(log)
     #print("\n\n")
-    with open('log.txt', 'w') as outfile:
-        json.dump(log, outfile)
+    # with open('log.txt', 'w') as outfile:
+    #     json.dump(log, outfile)
 
-    if board.step > MAX_STEPS:
-        sys.exit()
+    # if board.step > MAX_STEPS:
+    #     sys.exit()
     return my.next_actions
