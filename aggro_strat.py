@@ -986,7 +986,7 @@ def nearestDropoff(board, ship_point, h=0):
         if distance < min_distance:
             min_distance = distance
             min_pos = yard
-    NEAREST_DROPOFF[ (ship_point, h, BEST_NEW_DROPOFF, FUTURE_DROPOFF) ] = {'dist':min_distance, 'point': min_pos, 'orig_dist': orig_dist}
+    NEAREST_DROPOFF[(ship_point, all_dropoffs)] = {'dist':min_distance, 'point': min_pos, 'orig_dist': orig_dist}
 
     if CENTER_VAL > dist_tot: #find the center point by the summed lowest distance to all dropoffs
         CENTER_VAL = dist_tot
