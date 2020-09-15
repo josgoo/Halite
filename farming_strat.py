@@ -106,12 +106,13 @@ def shipAttackValue(board, ship_pos, attack_point_vals):
                     this_attack_vals[square]['v'][i] = attack_ship_square_val
 
     # add value for protecting squares
-    for (x_move, y_move) in PLUS_SHAPE_3DIST:
-        dist = abs(x_move) + abs(y_move)
-        square = Point((ship_pos.x + x_move) % size, (ship_pos.y + y_move) % size)
-        square_halite = board.cells[square].halite
-        for i in range(MAX_ATTACKERS_TO_SHIP):
-            this_attack_vals[square]['v'][i] += (0.75 ** dist) / 2 * 1.02 * square_halite
+    if isPastAttackingTime(board) and isFarmingMode(board):
+        for (x_move, y_move) in PLUS_SHAPE_3DIST:
+            dist = abs(x_move) + abs(y_move)
+            square = Point((ship_pos.x + x_move) % size, (ship_pos.y + y_move) % size)
+            square_halite = board.cells[square].halite
+            for i in range(MAX_ATTACKERS_TO_SHIP):
+                this_attack_vals[square]['v'][i] += (0.75 ** dist) / 2 * 1.02 * square_halite
 
     return this_attack_vals
 
@@ -185,8 +186,7 @@ def isDecimated(board):
 
 def chooseOpponentToDecimateViaRatio(board):
     global HAS_DECIMATED, OPPONENT_TO_TARGET, IS_FIRST_TIME_CHOOSING_TARGET
-    if False and HAS_DECIMATED >= 0 or isDecimated(board):
-        OPPONENT_TO_TARGET = None
+    if isFarmingMode(board):
         return
     max_ratio, max_opponent = 0, None
     neighbors = getAdjacentOpponents(board)
@@ -274,8 +274,6 @@ def withinBorders(board, point):
     return dist
 
 def isFarmingMode(board):
-    # TODO: ETESTING REMOVE
-    return isPastAttackingTime(board)
     # if we have more than half the total ships, let the borders loose
     if len(board.current_player.ships) >= len(board.ships) / 2:
         return False
@@ -310,6 +308,9 @@ def attackLogic(board, attacking_ships):
         miners = sum([1 if e_ship.halite > 0 else 0 for e_ship in board.players[OPPONENT_TO_TARGET].ships])
         if miners <= OPPONENT_ATTACK_MIN_SHIPS:
             chooseOpponentToDecimateViaRatio(board)
+        if len(board.current_player.ships) < 30 and board.step >= 200:
+            OPPONENT_TO_TARGET = None
+
     # if we are attacking someone but all of our shipyards get destroyed, stop attacking and retreat to original quadrant #TODO: might want better retreat area idea
     if isPastAttackingTime(board) and OPPONENT_TO_TARGET != None and n_yards == 0:
         OPPONENT_TO_TARGET = None
