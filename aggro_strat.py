@@ -77,6 +77,7 @@ CENTER, CENTER_VAL = None, MAX_INT
 HAS_DECIMATED = -1
 BORDERS = {}
 IS_FIRST_TIME_CHOOSING_TARGET = True
+BAD_ADJ_TARGETS_TURN_COUNT = 0
 
 log = []
 logging_mode = False
@@ -279,6 +280,10 @@ def shouldApplyWithinBorderMultiplier(board, point):
 def isPastAttackingTime(board):
     return board.step >= 80 or len(board.current_player.ships) >= 16
 
+# only want to lose a ship destroying shipyard if we are targeting them or its in our borders
+def isGoodToDestroyShipyard(board, e_shipyard):
+    return OPPONENT_TO_TARGET == e_shipyard.player_id or withinBorders(board, e_shipyard.position)
+
 def attackLogic(board, attacking_ships):
     global logging_mode
     attack_log = {}
@@ -394,7 +399,7 @@ def attackLogic(board, attacking_ships):
             mb_shipyard = board.cells[square].shipyard
             if mb_shipyard and mb_shipyard.player_id != board.current_player_id and \
                not board.cells[square].ship and mb_shipyard.player.halite < 500 and \
-               not targeted[square]:
+               not targeted[square] and isGoodToDestroyShipyard(board, mb_shipyard):
                 targeted[square] = True
                 attack_targets[ship.id] = {'point': square, 'value': MAX_INT, 'target': mb_shipyard.id}
                 attack_order.append(ship.id)
