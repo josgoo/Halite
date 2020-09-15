@@ -77,7 +77,7 @@ HAS_DECIMATED = -1
 BORDERS = {}
 
 log = []
-logging_mode = True
+logging_mode = False
 print_log = False
 
 def shipAttackValue(board, ship_pos, attack_point_vals):
@@ -180,8 +180,10 @@ def chooseOpponentToDecimateViaRatio(board):
             if ratio > max_ratio and miners > OPPONENT_ATTACK_MIN_SHIPS + 2:
                 max_ratio = ratio
                 max_opponent = opponent.id
+            print('miners for {}: {}'.format(opponent.id, miners))
 
     OPPONENT_TO_TARGET = max_opponent
+    print('targeting: ', OPPONENT_TO_TARGET)
 
 def getStartingQuadrantCenter(board):
     me = board.current_player.id
@@ -351,7 +353,6 @@ def attackLogic(board, attacking_ships):
                 targeted[square] = True
                 attack_targets[ship.id] = {'point': square, 'value': MAX_INT, 'target': mb_shipyard.id}
                 attack_order.append(ship.id)
-                print('attacking shipyard!', board.step)
 
     #assign targets to every attacking ship unless we have already assigned all attackers
     while len(attack_targets) < len(attacking_ships) and len(attack_targets) < MAX_ATTACKERS_TO_SHIP * len(attack_point_vals):
@@ -780,6 +781,7 @@ def assignProtectors(board, new_ship_avalue):
             protector = board.cells[shipyard.position].ship
             PROTECT[shipyard.id] = protector.id if protector else None
         elif one_step_protector:
+            print("One step protector!")
             PROTECT[shipyard.id] = one_step_protector
     protect_log = {'nsv_a': new_ship_avalue, 'Gamma': Gamma(board.step, new_ship_avalue)}
     return (PROTECT, protect_log)
@@ -841,7 +843,7 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
                         swap_ship.next_action = DIR_TO_ACTION[swap_ship_alt_space['dir']]
                         alt_target = targets['attack'][swap_ship.id]['point'] if ATTACKING_SHIPS[swap_ship.id] else targets['mine'][swap_ship.id]['point']
                         space_taken[swap_ship_alt_space['point']] = {'target': alt_target, 'id': swap_ship.id, 'value': swap_ship_alt_space['value'], 'alternative': {'point': None, 'dir': None, 'value': 0}}
-                        print('did the tihng!', board.step)
+                        print('did the weird thing!', board.step)
                         break
             if len(actions) == idx: #If this happens we are fucked, two friendly ships are colliding
                 for force_dir in actions:
@@ -857,7 +859,6 @@ def assignMovesToShips(board, order, targets, spawned_points, new_ship_avalue, P
                         #Set up the current ship to move into the blocking ship position
                         new_point = force_point
                         top_direction = force_dir
-                        print('did the crazy other thing', board.step)
                         break
                 break
         #If there are more options than the chosen one left
@@ -1484,9 +1485,4 @@ def agent(obs, config):
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
 
-    if logging_mode:
-        if board.step == 95:
-            with open('new_log.txt', 'w') as f:
-                json.dump(log, f)
-    print(board.step)
     return my.next_actions
