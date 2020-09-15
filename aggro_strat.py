@@ -75,6 +75,7 @@ DANGER = defaultdict(lambda: [0,0,0])
 CENTER, CENTER_VAL = None, MAX_INT
 HAS_DECIMATED = -1
 BORDERS = {}
+IS_FIRST_TIME_CHOOSING_TARGET = True
 
 log = []
 logging_mode = False
@@ -147,11 +148,15 @@ def moveToPlus(move_prob, plus):
         return 1
 
 def getAdjacentOpponents(board):
-    me_id = board.current_player.id
-    if me_id == 0 or me_id == 3:
-        return [1,2]
+    global IS_FIRST_TIME_CHOOSING_TARGET
+    if IS_FIRST_TIME_CHOOSING_TARGET:
+        me_id = board.current_player.id
+        if me_id == 0 or me_id == 3:
+            return [1,2]
+        else:
+            return [0,3]
     else:
-        return [0,3]
+        return [opponent.id for opponent in board.opponents]
 
 def isDecimated(board):
     if OPPONENT_TO_TARGET == None:
@@ -165,8 +170,8 @@ def isDecimated(board):
     return decimated
 
 def chooseOpponentToDecimateViaRatio(board):
-    global HAS_DECIMATED, OPPONENT_TO_TARGET
-    if HAS_DECIMATED >= 0 or isDecimated(board):
+    global HAS_DECIMATED, OPPONENT_TO_TARGET, IS_FIRST_TIME_CHOOSING_TARGET
+    if False and HAS_DECIMATED >= 0 or isDecimated(board):
         OPPONENT_TO_TARGET = None
         return
     max_ratio, max_opponent = 0, None
@@ -182,6 +187,9 @@ def chooseOpponentToDecimateViaRatio(board):
         print('miners for {}: {}'.format(opponent.id, miners))
 
     OPPONENT_TO_TARGET = max_opponent
+    # only set this to false after successfully choosing an adjacent target once
+    if OPPONENT_TO_TARGET != None and IS_FIRST_TIME_CHOOSING_TARGET:
+        IS_FIRST_TIME_CHOOSING_TARGET = False
     print('targeting: ', OPPONENT_TO_TARGET)
 
 def getStartingQuadrantCenter(board):
@@ -190,7 +198,7 @@ def getStartingQuadrantCenter(board):
     return quadrant_centers[me]
 
 def getBorders(board):
-        if HAS_DECIMATED >= 0:
+        if False and HAS_DECIMATED >= 0:
             me = board.current_player.id
             if me + HAS_DECIMATED == 1:
                 return ((0,20), (20,10))
@@ -259,6 +267,9 @@ def withinBorders(board, point):
     return True
 
 def shouldApplyWithinBorderMultiplier(board, point):
+    # if we have more than half the total ships, let the borders loose
+    if len(board.current_player.ships) >= len(board.ships) / 2:
+        return False
     return isPastAttackingTime(board) and \
            board.step < IGNORE_BORDER_MULTIPLIER_STEP and \
            OPPONENT_TO_TARGET == None and \
@@ -1516,5 +1527,5 @@ def agent(obs, config):
                              end_assign_moves - end_prioritize,
                              end_assign_tasks - end_assign_moves,
                              end - end_assign_tasks))
-    print(board.step)
+
     return my.next_actions
