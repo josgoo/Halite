@@ -1,0 +1,92 @@
+# Concepts
+
+### (Target - Moving) Amortized Value Logic Pipeline
+Similar to other teams, our logic pipeline first had every ship choose a target square on the map it wanted to reach and then assign each ship a direction to take to reach that target. To compare the value between different targets and moves, our AI ecostructure depended on an amortized value for every action. 
+This value always took the form
+
+<div align="center"> $\frac{Total \ Value \ of \ Target}{Total \ Turns \ Needed} * (Probability\ of \ Success)$ </div>
+
+## Dominance Map
+To determine the probability of success for various targets we needed to have some metric of board dominance. To do this, we designated our dominance of a square to be the probability that no enemy ship would enter the square for 2 turns given all ships move completely randomly. 
+
+We additionally reran that process for each friendly ship to determine specific dominance maps counting only enemy ships with less cargo. The general dominance map was used for mining as any enemy ship could mine a square and steal expected halite whereas the specific dominance map was used for collision avoidance as only lighter ships could destroy out ships. 
+
+## Assigning Ship Type
+Throughout the game, we assigned ships assigned to a type. The types consisted of mining ships or attacking ships. At the end of every turn, ships re-evaluated whether they would have been better off as a mining ship or an attacking ship and chose which type they would prefer to be be for the next turn. 
+
+Because the value of a ship mining or attacking depended on the actions of other friendly ships, the perceived value of a ship acting as the other type assumed it was the last to act and last to choose its target. This included other ships that already decided to switch.
+
+Switching type assignment required the amortized turn value of the ship acting as the other type to be significantly higher than the current type. We implemented this buffer between the ship type values so ships would not continuously switch back and forth between types and targets.
+
+## Mining
+For each mining ship, our bot compiles a list of amortized values for each spot on the map it could mine. Our amortized value specifically solved the following maximization problem 
+
+<div align="center"> $\max_{t} \ $<font size="+2">$ \frac{(1 \ - \ 0.75^{t}) \ * \ H}{dist \ + \ t}$</font>$*\ (Probability\ of \ Success)$ </div>
+
+where H was the current halite on each block, t was the amount of time we spent mining, dist was our ship's distance to the mining location. We chose not to include any parameter for returning to base at all and instead handle that separately. The less ships returned, the less the distance from our base factored into the mining amortized value.
+
+$\textbf{SAM MINING}$
+
+Once our ships all had their target amortized lists, we assigned the specific target to each ship using loss. That is, we ordered ship to mining target asignment by how much lower the total amortized value would be if each ship wasn't assigned its best target. For each ship, this was simply
+
+<div align="center">$ ship\_amortized\_list[0] - ship\_amortized\_list[1]$ </div>
+
+Then, as we assigned targets to each mining ship, we removed assigned targets from the amortized lists and updated each ship's loss. The idea behind doing this was to attempt to maximize the total amortized value among all of our ships while still using a greedy algorithm. 
+
+Additionally, we allowed ships to look slightly beyond their best target right now. In an attempt to better coordinate our swarm of mining ships, once a ship was assigned to a target we reran the function to compute the mining amortized value list; this time from the first target. This effectively gave us where the ship would want to travel next, not accounting for opponent movements. We then discounted other ships amortized values traveling to the second target by some $\beta$ to somewhat account for the fact that this specific ship will want to go there.
+
+## Attacking
+For each attacking ship, our bot, similar to mining ships, compiles a list of amortized values for each spot on the map it could attack. Our attacking amortized value for each square was
+
+<div align="center"> <font size="+2"> $\sum_{e\ \in enemy\ ships} \frac{(Probabiliy\ of\ Capture)_e\ *\ (Probability\ Actualized)_e\ *\ (\ Baseline\ Ship\ Val\ +\ min(500,\ cargo_e)\ )}{(Num\ Attacking\ Ships\ on\ Target)_e\ *\ (dist\ +\ (Expected\ Capture\ Time)_e\ )}  $ </font> </div>
+
+Here, we looked at every square within a 2 move radius from an enemy ship. Our estimated probability the ship moved to that square was (Probability Actualized). From that square, we once more predicted the probability the opponent ship would move from there in each direction. Those surrounding squares were the squares we targeted and gave a (Probability of Capture) to. 
+
+Once our ships all had their target amortized lists, again we assigned the specific target to each ship using loss.
+
+## Assigning Actions to Ships
+To assign specific actions to each ship from its target we once again used loss to order the actions of each ship with the exception that ships returning to our base or in danger had precedent. 
+
+To actually determine direction, we labeled each action with the positive amortized value if it moved towards its target, negative amortized value if it moved away, and ( 0 + value of mining ) for staying still. Then we added a collision weighting onto the values and chose the direction with the highest value.
+
+We also ran into cases where our ships wanted to move through eachother or would get trapped. In these cases, if the ships were of the same type and neither were returning, we swapped the targets for each. 
+
+## Collision Avoidance
+To implement collision avoidance for our bot, we needed some way to anticipate what the opponent ships were doing. To do so, we stored the previous 3 moves each ship had made, and created a vector from it. This enemy vector gave us some idea of where the ship was planning on going. We purposely kept the enemy move prediction very general to not overfit it to different playstyles. We weren't confident we could do a more involved prediction analysis without accounting for the enemy strategy. We combined the vector with an uncertainty discount blur to give some amount of weight to every direction. 
+
+From the enemy movement prediction, we added a collision cost to each square.
+
+<div align="center"> $(Collision\ Coef)\ *\ (Collision\ Cost)\ *\ (Probability\ of\ Move) $ </div>
+where the (Probability of Move) was the vector probability an enemy ship moved to the square in question. The cost of collision was
+<div align="center"> $ (Collision\ Cost) = 500\ +\ cargo\ +\ (Amortized\ Value)\ -\ (Expected\ Amoritzed\ Value\ of\ New\ Ship)$ </div>
+The (Collision Coef) was the number of enemy ships with less cargo from that player surrounding our ship. The idea behind it being players with more ships surrounding our ship were more of a threat given that they can better coordinate their ships to attack more effectively. 
+
+## Returning To Base
+    - Attacking ships stay on 0 halite, force return once >0 halite
+    - re-assign ship targets based on value of returning halite
+        - can be used for spawning new ships / shipyards
+        - heavy ship, value in returning based off aggressive nature of game
+        - safety
+        - endgame
+        - shipyards all destroyed
+    - value of returning to spawn new ships
+        -compare # of turns saved having this ship return now vs later
+            - # turns needed to fund a new ship needing a required amount
+        - Relic from prior version of bot
+## Dropoff Spawning
+    - Look at every location within certain parameters
+        - within a certain distance from at least 2 ships and 1 dropoff
+        - at least a certain distance from out own / enemy dropoffs
+        - not next to 0 cost enemy
+    - sum up amortized value of mining spots near the dropoff (hub value)
+        - choose largest hub value minus oppertunity cost of amortized value of ship going to create it
+    - given best location, create it if the savings of the spot > 500 or first dropoff
+        - savings = sum of a_val * turns_saved
+    
+## Ship Spawning
+    - Too hard to actually do
+    - Spam ships until certain turn
+    
+
+### Shipyard Protection
+    - Leave a protector on if we have more than 15 ships or if there is an enemy nearby and we are on or 1 away from the shipyard
