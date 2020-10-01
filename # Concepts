@@ -21,7 +21,7 @@ Switching type assignment required the amortized turn value of the ship acting a
 ## Mining
 For each mining ship, our bot compiles a list of amortized values for each spot on the map it could mine. Our amortized value specifically solved the following maximization problem 
 
-<div align="center"> $\max_{t} \ $<font size="+2">$ \frac{(1 \ - \ 0.75^{t}) \ * \ H}{dist \ + \ t}$</font>$*\ (Probability\ of \ Success)$ </div>
+<div align="center"> $\max_{t} \ $<font size="+2">$ \frac{(1 \ - \ 0.75^{t}) \ * \ Halite}{dist \ + \ t}$</font>$*\ (Probability\ of \ Success)$ </div>
 
 where H was the current halite on each block, t was the amount of time we spent mining, dist was our ship's distance to the mining location. We chose not to include any parameter for returning to base at all and instead handle that separately. The less ships returned, the less the distance from our base factored into the mining amortized value.
 
@@ -62,31 +62,44 @@ where the (Probability of Move) was the vector probability an enemy ship moved t
 The (Collision Coef) was the number of enemy ships with less cargo from that player surrounding our ship. The idea behind it being players with more ships surrounding our ship were more of a threat given that they can better coordinate their ships to attack more effectively. 
 
 ## Returning To Base
-    - Attacking ships stay on 0 halite, force return once >0 halite
-    - re-assign ship targets based on value of returning halite
-        - can be used for spawning new ships / shipyards
-        - heavy ship, value in returning based off aggressive nature of game
-        - safety
-        - endgame
-        - shipyards all destroyed
-    - value of returning to spawn new ships
-        -compare # of turns saved having this ship return now vs later
-            - # turns needed to fund a new ship needing a required amount
-        - Relic from prior version of bot
+Our returning to base strategy was coded as an independent thought from each ship's other options. Our attacking ships simply returned if they had any cargo. It is important to note, an attacking ship with cargo could also transition to a mining ship if it was better to mine than return. Our mining ships only returned if at least one of the following requirements were met: the ship was in danger, the ship was too heavy, the game was about to end, or the ship's cargo would speed up the number of turns it would take to create another ship.
+
+We crudely assed danger on a per ship basis through each ship's distance to lighter enemy ships over the past few turns. Every lighter enemy ship 1 manhattan distance away added 2 "danger" and every lighter empty ship 2 manhattan distance away added 1 "danger." A ship was considered in danger if the sum of the "danger" over the past 3 turns exceeded 5.
+
+A ship was considered heavy based on a global danger variable. Our global danger value started near zero and every time any ship was in danger, the global value increased. The more global danger there was, the more incentivized our ships would be to return. The implementaion of this consisted of giving the nearest dropoff from a ship the value of $\frac{(Global\ Danger\ Value)\ *\ Cargo}{dist}$. If this value was greater than the amortized value of mining, the ship would return.
+
+We defined the endgame for each ship to be step $400 - dist - (buffer)$ where buffer was some additional time for ships to return to base. Any ship with cargo past their endgame step would be forced to return.
+
+Lastly, in the beginning of the game we wanted ships to return more frequently to fund the creation of new ships. The return value for these ships was $\frac{(New\ Ship\ Value) * cargo/500}{dist}$ 
+$\textbf{Left out our gamma garbage}$
+
 ## Dropoff Spawning
-    - Look at every location within certain parameters
-        - within a certain distance from at least 2 ships and 1 dropoff
-        - at least a certain distance from out own / enemy dropoffs
-        - not next to 0 cost enemy
-    - sum up amortized value of mining spots near the dropoff (hub value)
-        - choose largest hub value minus oppertunity cost of amortized value of ship going to create it
-    - given best location, create it if the savings of the spot > 500 or first dropoff
-        - savings = sum of a_val * turns_saved
+Our decision of where to spawn dropoffs was one of the most difficult problems we needed to solve. Unlike other sections, we weren't able to quantitatively figure out what truly made a dropoff position better than another besides its proximity to good halite sections. On a high level, a well positioned dropoff not only acted as a hub for ships to be created from and return to, but it was also a leading factor in board control. Often in our games, other team's dropoff positioning directly led to their domination of the board and prevented ours.
+
+Our dropoff algorithm also focused on providing a hub for mining and not necessarily attacking ships. Due to this, our attacking ships would frequently kill an enemy ship and then proceed to not be able to successfully return to our dropoff before also getting picked off and destroyed.
+
+To determine where we put our dropoffs, we looked at every square that met a list of requirements and choose the best one. A potential dropoff square needed to be within a certain distance from at least 2 of our friendly ships and 1 friendly dropoff, at least a certain distance away from any friendly/enemy dropoff, and not next to a 0 cost enemy ship. These conditions existed just so that we could reasonably protect the new shipyard if needed.
+
+Of these potential locations, we summed up the top D amortized values of mining spots near the potential location. That is, if we created D new mining ships, what would the sum of their amortized values be right now. The square with the largest sum amortized value was the spot we chose. 
+
+Once that square was chosen, we determined whether or not we should actually build that dropoff in the future. To do so, we just calculated every ship's current total savings from the introduction of the new shipyard. Each ship theoretically could save its amortized value * how many fewer turns it needs to take to now return.
+<div align="center"> $ Savings = \sum_{s \in ships} \ (Amortized\ Value)_s\ *\ max(\ 0,\ dist_s - new\_dist_s\ )$ </div>
+
+If the new dropoffs savings exceeded 500, we saved that location as a future dropoff. The first ship in the future to return to it would then create that specific shipyard.
+
+ 
     
 ## Ship Spawning
-    - Too hard to actually do
-    - Spam ships until certain turn
+We originally created a model to determine the expected returns of a mining ship over time. That is, if we created a ship on turn $t$, how much halite would we expect it to mine and successfully return with. Unfortunately, with the advent of attacking ships and the varying farming strategies of opponents, this metric was often incorrect. 
+
+We were unable to mathematically model the value of a ship over time because of that. Instead, we chose to always spawn ships up to a somewhat arbitrarily determined turn if we could. 
     
 
 ### Shipyard Protection
-    - Leave a protector on if we have more than 15 ships or if there is an enemy nearby and we are on or 1 away from the shipyard
+In watching our games, we found a large discrepancy in our games if an enemy destroyed our shipyards early in the game or not. Losing a shipyard was a huge blow; however, spending a ship to stay on the shipyard and continuously protect it was also a large cost. Replacing a shipyard cost 1000 halite (convert a ship + replace the ship) while protecting cost 500 per ship. If an enemy trades one of their ships for one of our protecting ships, than it still not only cost us 1000 halite to protect the shipyard (500 for the first ship + 500 for the second protecting ship), but it also cost us the oppertunity cost of having the ship go out and mine/attack!
+
+To us, this originally meant defending a shipyard was only worth it if someone would attack us without protection, but wouldn't with protection.
+
+In our imperical findings though, a shipyard ended up being worth more than 1000 halite. It provided an unquantified amount of board control for our ships. Because of this, we once again didn't come up with a completely sound solution. We chose to have a protector for every shipyard once we had reached a certain number of ships with the idea being that the decreasing marginal value of each ship would at some point be below that of spending a ship to defend our base. We chose that number to be 15 through trial and error.
+
+We did implement a slightly more involved protection where we would leave a protector on a shipyard if there was an enemy ship nearby and we were within a manhattan distance of 1 from the shipyard. We didn't want to mess with out amortized value system too much.
