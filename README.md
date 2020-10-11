@@ -132,3 +132,6 @@ While reviewing some of our games late in the competition, we realized that losi
 Empirically however, we found that a shipyard ended up being worth far more than 1000 halite&mdash;it provided an unquantifiable amount of board control for our ships. This newfound value inspired us to have a protecting ship for every shipyard after reaching a certain total number of ships. We figured that the decreasing marginal value of each new ship would at some point be lower than the value of spending a ship to defend our base. Through trial and error, we tuned this number of ships to be 15.
 
 We added a small optimization which allowed us to always protect a shipyard if it was in immediate danger of being destroyed, even if we were below the protecting threshold: if an enemy ship was nearby and a friendly ship was adjacent to or on top of the shipyard, that ship would move to protect the shipyard.
+
+# Conclusion
+Halite IV was an incredibly fun experience for everyone on the team, and we look forward to participating in subsequent competitions! Hopefully our learnings from this time around will let us reach even greater heights next time.
