@@ -41,13 +41,13 @@ where <code>E<sub>dist(2)</sub></code> was the set of enemy ships with nonzero c
 
 The expected value of capturing an enemy ship `e` was defined as
 
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=(\texttt{probability \, of \, intersection})_e \, * \, (b \, %2B \, min(500, \, cargo_e))">.</div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{expected \, value \, of \, capturing \, e}=(\texttt{probability \, of \, intersection})_e \, * \, (b \, %2B \, min(500, \, cargo_e))">.</div>
 
 Here, <code>(probability of intersection)<sub>e</sub></code> was the estimated probability that `e` would move to the current square at some point over the next 2 turns. `b` was a constant defining the implicit value of destroying an enemy ship, and <code>min(500, cargo<sub>e</sub>)</code> added in `e`'s cargo with a cap of 500. This cap was implemented to prevent overvaluing very high cargo ships, as these ships would typically convert to a shipyard if they sensed they were in immediate danger, stopping us from actually capturing them.
 
 The expected number of steps needed for a friendly ship to capture an enemy ship `e` was defined as
 
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=dist \, %2B \, ctime_e(n_e)">,</div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{expected \, num \, steps \, needed \, to \, capture \, e}=dist \, %2B \, ctime_e(n_e)">,</div>
 
 where `dist` was the Manhattan distance from our ship to the square and <code>ctime<sub>e</sub>(n<sub>e</sub>)</code> was a function representing the amount of time it would take to successfully capture `e` given <code>n<sub>e</sub></code> friendly ships were chasing `e`. This value monotonically decreased as <code>n<sub>e</sub></code> increased, as we believed that more chasing ships would lead to an exponentially sooner capture time.
 
@@ -73,7 +73,7 @@ where `probability of move` was the probability an enemy ship would move to the 
 The inspiration behind `collision coef` was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
 
 ## Returning To Base
-As mentioned before, the ship return logic was an independent subsystem of the agent. Attacking ships would simply return if they had gained any cargo. However, note that an attacking ship with cargo was allowed to transition into mining mode if mining was worth more than returning. Mining ships returned only if at least one of the following four criteria were met: (1) the ship was in "danger", (2) the ship was too "heavy", (3) the game was about to end, or (4) depositing the ship's cargo right now would let us spawn a new ship sooner.
+As mentioned before, the ship return logic was an independent subsystem of the agent. Attacking ships simply returned if they had gained any cargo. However, note that an attacking ship with cargo was allowed to transition into mining mode if mining was worth more than returning. Mining ships returned only if at least one of the following four criteria were met: (1) the ship was in "danger", (2) the ship was too "heavy", (3) the game was about to end, or (4) depositing the ship's cargo right now would let us spawn a new ship sooner.
 
 We defined "danger" for each ship based on the number of lighter enemy ships within a certain distance over several turns. On any given turn, lighter enemy ships that were 1 or 2 Manhattan distance away from a ship added 1 or 2 points to that ship's "danger" counter. If the sum of the "danger" counter over the past 3 turns exceeded 5 for a ship, that ship was determined to be in danger and would satisfy condition (1) above.
 
