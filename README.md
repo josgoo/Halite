@@ -1,11 +1,11 @@
 # Introduction - Team 677's Agent
-This writeup details the implementation of the 29<sup>th</sup> place (out of 1139 teams) Halite IV agent and the learnings of the team that wrote it. For those who do not know, [Halite IV](https://www.kaggle.com/c/halite/overview) is a resource management game created by Two Sigma where you control a fleet of ships attempting to collect the as much halite as possible. An example game can be seen here:
+This writeup details the implementation of the 29<sup>th</sup> place (out of 1139 teams) Halite IV agent and the learnings of the team that wrote it. For those who do not know, [Halite IV](https://www.kaggle.com/c/halite/overview) is a resource management game created by Two Sigma where you control a fleet of ships attempting to collect as much halite as possible. An example game can be seen here:
 
 <div align="center">
 
 ![A halite game.](images/halite.gif)</div>
 
-Before reading further, be sure to take a moment to skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level take-aways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as our fellow competitors for their fascinating insights and awesome writeups!
+Before reading further, be sure to take a moment to skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level takeaways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as our fellow competitors for their fascinating insights and awesome writeups!
 
 # 1. What We Learned about Approaching a Halite Problem
 
@@ -134,4 +134,4 @@ Empirically however, we found that a shipyard ended up being worth far more than
 We added a small optimization which allowed us to always protect a shipyard if it was in immediate danger of being destroyed, even if we were below the protecting threshold: if an enemy ship was nearby and a friendly ship was adjacent to or on top of the shipyard, that ship would move to protect the shipyard.
 
 # Conclusion
-Halite IV was an incredibly fun experience for everyone on the team, and we look forward to participating in subsequent competitions! Hopefully our learnings from this time around will let us reach even greater heights next time.
+Halite IV was an amazingly enjoyable experience for everyone on the team, and we look forward to participating in subsequent competitions! Hopefully our learnings from this time around will let us reach even greater heights next time.
