@@ -35,9 +35,9 @@ However, it is clear that a greedy algorithm is suboptimal here. To get closer t
 ## Attacking
 Similar to mining ships, for each attacking ship we compiled a list of amortized values for each square that we considered an attack target. A square was a viable attacking target if it was within a Manhattan distance of 2 from any enemy ship with nonzero cargo. The amortized attack value for each square was
 
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\sum_{e\ \in E_{dist(2)}} \frac{\texttt{expected \, value \, of \, capturing \, e}}{(n_e + 1) \, * \, \texttt{expeced \, num \, steps \, needed \, to \, capture \, e}}">,</div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\sum_{e\ \in E_{dist(2)}} \frac{\texttt{expected \, value \, of \, capturing \, e}}{(n_e \, %2B \, 1) \, * \, \texttt{expeced \, num \, steps \, needed \, to \, capture \, e}}">,</div>
 
-where <code>E<sub>dist(2)</sub></code> was the set of enemy ships with nonzero cargo within Manhattan distance 2 of the square, and <code>n<sub>e</sub></code> was the number of friendly ships already assigned to attack enemy ship `e`. The attacking amortized value of any particular enemy ship is its expected capture value divided by the time it will take to successfully capture it. The division by <code>n<sub>e</sub>+1</code> distributes this value evenly among all friendly ships which contributed to the capture (including the current ship, assuming it will be assigned to attack).
+where <code>E<sub>dist(2)</sub></code> was the set of enemy ships with nonzero cargo within Manhattan distance 2 of the square, and <code>n<sub>e</sub></code> was the number of friendly ships already assigned to attack enemy ship `e`. The attacking amortized value of any particular enemy ship is its expected capture value divided by the time it will take to successfully capture it. The division by <code>n<sub>e</sub> + 1</code> distributes this value evenly among all friendly ships which contributed to the capture (including the current ship, assuming it will be assigned to attack).
 
 The expected value of capturing an enemy ship `e` was defined as
 
@@ -54,7 +54,7 @@ where `dist` was the Manhattan distance from our ship to the square and <code>ct
 After computing these amortized attack value lists, we again assigned an attack target to each ship in order of ship loss (in the same fashion as mining).
 
 ## Assigning Actions to Ships
-So far we have only discussed how we assigned targets to ships. However, once the targets have been assigned, we still need to pick an optimal movement action for each ship to reach its target from its current position. To determine the order of movement action assignment, we again used loss but made the exceptions that ships in immediate danger and ships returning to base had precedent.
+So far we have only discussed how we assigned targets to ships. However, once the targets have been assigned, we still needed to pick an optimal movement action for each ship to reach its target from its current position. To determine the order of movement action assignment, we again used loss but made the exceptions that ships in immediate danger and ships returning to base had precedent.
 
 We labeled each movement action with a positive value if it moved in the direction of the target and a negative value if it moved away from the target. Within each of these two cases, we gave a larger value to the direction which provided the most flexibility for later movements along the shortest path to the target. For example, if the shortest path to our target was 4 squares up and 7 squares left, we would prefer to move left rather than up because in the future we would have more chances to move in either direction (4 squares up and 6 squares left remaining instead of 3 squares up and 7 squares left). The value of staying still was simply the halite gained from mining the current square. We also added a collision weighting to the movement values (described in the Collision Avoidance section) to encourage safer movements.
 
