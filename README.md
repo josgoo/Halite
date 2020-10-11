@@ -26,7 +26,7 @@ That said, it is important to acknowledge that we actively decided not to build 
 # Part II - The Bot
 
 ## Targeting & Amortized Values
-Similar to other teams, our overarching logic pipeline chose a target square for each ship and then assigned each ship an optimal action to take to reach that target. To choose each target and action, our architecture computed an amortized value for every target which generally took the form
+Similar to other teams, our top-level logic pipeline chose a target square for each ship and then assigned each ship an optimal action to take to reach that target. To choose each target and action, our architecture computed an amortized value for every target which generally took the form
 
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{\texttt{total \, value \, of \, target}}{\texttt{total \, turns \, needed}} * \texttt{probability \, of \, success}."></div>
 
