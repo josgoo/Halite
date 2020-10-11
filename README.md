@@ -7,7 +7,7 @@ This writeup details the implementation of the 29<sup>th</sup> place (out of 113
 
 Before reading further, be sure to take a moment to skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level takeaways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as to our fellow competitors for their fascinating insights and awesome writeups!
 
-# Part I - Learnings about Approaching Halite-style Problems
+# Part I - How to Approach Halite-style Problems
 
 While we learned a lot from thinking through and solving the many individual smaller-scale problems that formed the basis of our Halite bot, perhaps the most important things we discovered were lessons on forming high-level problem-solving approaches for large, complex problems like Halite. Before Halite IV, no one on the team had had any experience with coding competitions, and there are a handful of key takeaways which we plan to use when tackling future computer science projects. Hopefully they will provide some guidance to other first-time coding competitors, helping them avoid the biggest issues we ran into.
 
