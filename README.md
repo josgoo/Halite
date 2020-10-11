@@ -35,6 +35,8 @@ However, it is clear that a greedy algorithm is suboptimal here. To get closer t
 ## Attacking
 Similar to mining ships, for each attacking ship we compiled a list of amortized values for each square that we considered an attack target. A square was a viable attacking target if it was within a Manhattan distance of 2 from any enemy ship. The amortized attack value for each square was
 
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\sum_{e\ \in E_{dist(2)}} \frac{\texttt{expected \, value \, of \, capturing \, e}}{n_e \, * \, \texttt{num \, steps \, needed \, to \, capture \, e}}">.</div>
+
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\sum_{e\ \in \texttt{enemy \, ships}} \frac{(\texttt{probability \, of \, capture})_e \, * \, (\texttt{probability \, actualized})_e \, * \, (b \, %2B \, min(500, \, cargo_e))}{n_e \, * \, (dist \, %2B \, ctime_e)}">.</div>
 
 The estimated probability that a particular enemy ship `e` would move to the square on the next turn was <code>(probability actualized)<sub>e</sub></code>. From that square, we again computed the probability that the ship would move from there to each of the four immediately adjacent squares. These probabilities defined <code>(probability of capture)<sub>e</sub></code> for those squares. We defined the implicit value of destroying an enemy ship with the constant `b`. <code>n<sub>e</sub></code> was the number of friendly ships already assigned to attack enemy ship `e`, `dist` was the Manhattan distance from the friendly ship to the square, and <code>ctime<sub>e</sub></code> was the number of turns we expected it to take to successfully capture enemy ship `e`.
