@@ -5,7 +5,7 @@ This writeup details the implementation of the 29<sup>th</sup> place (out of 113
 
 ![A halite game.](images/halite.gif)</div>
 
-Before reading further, be sure to take a moment to skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level takeaways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as our fellow competitors for their fascinating insights and awesome writeups!
+Before reading further, be sure to take a moment to skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level takeaways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as to our fellow competitors for their fascinating insights and awesome writeups!
 
 # 1. What We Learned about Approaching a Halite Problem
 
