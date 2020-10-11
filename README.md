@@ -1,7 +1,7 @@
 # Intro
 This writeup details the implementation of the 29<sup>th</sup> place (out of 1139 teams) Halite IV agent and the learnings of the team that wrote it. For those who do not know, [Halite IV](https://www.kaggle.com/c/halite/overview) is a resource management game created by Two Sigma where you control a fleet of ships attempting to collect the as much halite as possible. An example game can be seen here:
 
-<div align="center">
+<div align="center" style="width:150px; height:150px">
 
 ![A halite game.](images/halite.gif)</div>
 
