@@ -1,6 +1,6 @@
 # The Bot
 
-## (Target - Moving) Amortized Value Logic Pipeline
+## Targeting & Amortized Values
 Similar to other teams, at a high level our logic pipeline had every ship choose a target square and then assigned each ship an optimal action to take to reach that target. To choose each target and action, our architecture computed an amortized value for every target which generally took the form
 
 <div align="center"> $\frac{Total \ Value \ of \ Target}{Total \ Turns \ Needed} * (Probability\ of \ Success)$ </div>
@@ -58,7 +58,7 @@ where (Probability of Move) was the probability an enemy ship would move to the 
 <div align="center"> $ (Collision\ Cost) = 500\ +\ cargo\ +\ (Amortized\ Value)\ -\ (Expected\ Amoritzed\ Value\ of\ New\ Ship).$ </div>
 The inspiration behind (Collision Coef) was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
 
-## Returning To Base:
+## Returning To Base
 As mentioned before, the ship return logic was an independent subsystem of the agent. Attacking ships would simply return if they had gained any cargo. However, note that an attacking ship with cargo was allowed to transition into mining mode if mining was worth more than returning. Mining ships returned only if at least one of the following four criteria were met: (1) the ship was in "danger", (2) the ship was too "heavy", (3) the game was about to end, or (4) depositing the ship's cargo right now would let us spawn a new ship sooner.
 
 We defined "danger" for each ship based on the number of lighter enemy ships within a certain distance over several turns. On any given turn, lighter enemy ships that were 1 or 2 Manhattan distance away from a ship added 1 or 2 points to that ship's "danger" counter. If the sum of the "danger" counter over the past 3 turns exceeded 5 for a ship, that ship was determined to be in danger and would satisfy condition (1) above.
@@ -70,7 +70,7 @@ For the third condition, each ship was forced to return once the game step reach
 Finally, near the beginning of the game we wanted ships to return more frequently in order to fund the creation of new ships. We defined the returning value of a ship to be $\frac{(New\ Ship\ Value) * cargo/500}{dist}$.
 $\textbf{Left out our gamma garbage}$
 
-## Dropoff Spawning: TODO
+## Shipyard Spawning: TODO
 Our decision of where to spawn dropoffs was one of the most difficult problems we needed to solve. Unlike other sections, we weren't able to quantitatively figure out what truly made a dropoff position better than another besides its proximity to good halite sections. On a high level, a well positioned dropoff not only acted as a hub for ships to be created from and return to, but it was also a leading factor in board control. Often in our games, other team's dropoff positioning directly led to their domination of the board and prevented ours.
 
 Our dropoff algorithm also focused on providing a hub for mining and not necessarily attacking ships. Due to this, our attacking ships would frequently kill an enemy ship and then proceed to not be able to successfully return to our dropoff before also getting picked off and destroyed.
@@ -83,24 +83,16 @@ Once that square was chosen, we determined whether or not we should actually bui
 <div align="center"> $ Savings = \sum_{s \in ships} \ (Amortized\ Value)_s\ *\ max(\ 0,\ dist_s - new\_dist_s\ )$ </div>
 
 If the new dropoffs savings exceeded 500, we saved that location as a future dropoff. The first ship in the future to return to it would then create that specific shipyard.
-
- 
     
-## Ship Spawning: TODO
-We originally created a model to determine the expected returns of a mining ship over time. That is, if we created a ship on turn $t$, how much halite would we expect it to mine and successfully return with. Unfortunately, with the advent of attacking ships and the varying farming strategies of opponents, this metric was often incorrect. 
+## Ship Spawning
+Originally, we tried to model to the expected returns of a new mining ship over time to determine whether or not to spawn it. In other words, we wanted to answer the question "if we create a ship on turn $t$, how much halite would we expect it to mine and successfully return with?" Unfortunately, this value proved extremely difficult to model, especially after we added the concept of attacking ships and tried to factor in different opponent strategies. Since we felt that we were unable to design an effective model for this subproblem, we ultimately chose to always spawn ships up to a certain turn if we had enough halite to do so. The exact turn chosen was a hyperparameter that we tuned with much experimentation, and ended up being around turn 270 in our final bot.
 
-We were unable to mathematically model the value of a ship over time because of that. Instead, we chose to always spawn ships up to a somewhat arbitrarily determined turn if we could. 
-    
+## Shipyard Protection
+While reviewing some of our games late in the competition, we realized that losing shipyards in the early game was almost always a fatal blow to our agent. To protect against this weakness, the first thought was to assign a ship to stay still on the shipyard and protect it. After some thought, we agreed that having a ship stay still on the shipyard would incur too high of a cost. Though replacing a shipyard cost 1000 halite (to convert a ship and spawn a new one to replace it) and protecting only cost 500 (to spawn a defending ship), there was the opportunity cost of not having a ship mine or attack. Moreover, if an enemy managed to destroy our protecting ships, we would have to continually spawn more protecting ships. We therefore concluded that defending a shipyard was only worth it if an enemy attacked us without protection, but stayed away with protection.
 
-### Shipyard Protection: TODO
-In watching our games, we found a large discrepancy in our games if an enemy destroyed our shipyards early in the game or not. Losing a shipyard was a huge blow; however, spending a ship to stay on the shipyard and continuously protect it was also a large cost. Replacing a shipyard cost 1000 halite (convert a ship + replace the ship) while protecting cost 500 per ship. If an enemy trades one of their ships for one of our protecting ships, than it still not only cost us 1000 halite to protect the shipyard (500 for the first ship + 500 for the second protecting ship), but it also cost us the oppertunity cost of having the ship go out and mine/attack!
+Empirically however, we found that a shipyard ended up being worth far more than 1000 halite&mdash;it provided an unquantifiable amount of board control for our ships. This newfound value inspired us to have a protecting ship for every shipyard after reaching a certain total number of ships. We figured that the decreasing marginal value of each new ship would at some point be lower than the value of spending a ship to defend our base. Through trial and error, we tuned this number of ships to be 15.
 
-To us, this originally meant defending a shipyard was only worth it if someone would attack us without protection, but wouldn't with protection.
-
-In our imperical findings though, a shipyard ended up being worth more than 1000 halite. It provided an unquantified amount of board control for our ships. Because of this, we once again didn't come up with a completely sound solution. We chose to have a protector for every shipyard once we had reached a certain number of ships with the idea being that the decreasing marginal value of each ship would at some point be below that of spending a ship to defend our base. We chose that number to be 15 through trial and error.
-
-We did implement a slightly more involved protection where we would leave a protector on a shipyard if there was an enemy ship nearby and we were within a manhattan distance of 1 from the shipyard. We didn't want to mess with out amortized value system too much.
-
+We added a small optimization which allowed us to always protect a shipyard if it was in immediate danger of being destroyed, even if we were below the protecting threshold: if an enemy ship was nearby and a friendly ship was adjacent to or on top of the shipyard, that ship would move to protect the shipyard.
 
 # Approaching a Halite Problem: What We Learned
 
