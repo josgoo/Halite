@@ -80,7 +80,7 @@ The expected number of steps needed for a friendly ship to capture an enemy ship
 
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{expected \, num \, steps \, needed \, to \, capture \, e}=dist \, %2B \, ctime_e(n_e \, %2B \, 1)">,</div>
 
-where `dist` was the Manhattan distance from our ship to the square and <code>ctime<sub>e</sub>(n<sub>e</sub> + 1)</code> was a function representing the amount of time it would take to successfully capture `e` given <code>n<sub>e</sub> + 1</code> friendly ships were chasing `e`. This value monotonically decreased as <code>n<sub>e</sub></code> increased, as we believed that more chasing ships would lead to an exponentially sooner capture time.
+where `dist` was the Manhattan distance from our ship to the square and <code>ctime<sub>e</sub>(n<sub>e</sub> + 1)</code> was a function representing the amount of time it would take to successfully capture `e` given <code>n<sub>e</sub> + 1</code> friendly ships were chasing `e`. This value monotonically decreased as <code>n<sub>e</sub></code> increased, as we believed that more chasing ships would lead to an exponentially shorter capture time.
 
 After computing these amortized attack value lists, we again assigned an attack target to each ship in order of ship loss (in the same fashion as mining).
 
