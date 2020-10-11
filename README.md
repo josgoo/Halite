@@ -37,7 +37,7 @@ In order to determine the probability of successfully reaching a given square, w
 
 ![The dominance map probability diagram.](images/dominance_map_probability_diagram.jpg)</div>
 
-Once we had a sphere of influence for each enemy ship, we used them to calculate for each square the probability that no enemy ship would enter that square for the next 2 turns. These probabilities formed the base of our global dominance map, with higher values indicating a smaller likelihood of any enemy ship crossing a square and therefore meaning that square is safer.
+Once we had a sphere of influence for each enemy ship, we used them to calculate for each square the probability that no enemy ship would enter that square for the next 2 turns. These probabilities formed the base of our global dominance map, with higher values indicating smaller likelihoods of any enemy ship crossing a square. Therefore, a higher value implied that a square was safer.
 
 For the ship-specific dominance map, we used the process as above but only factored in enemy ships lighter than the current ship (rather than all enemy ships). The final dominance map for each ship was a linear combination of the global dominance map and that ship's specific dominance map. The ship-specific dominance map was weighted to be about three times as important as the global dominance map, with the idea that the global map provides a long-term deterrent warning friendly ships not to go to enemy dominated territory while the ship-specific map helps decide short-term collision avoidance.
 
