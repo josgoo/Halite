@@ -51,12 +51,14 @@ There were a few edge cases in which our ships wanted to move through each other
 ## Collision Avoidance
 To implement collision avoidance, we needed some way to anticipate and predict what the opponent ships would do. We stored the previous 3 actions each enemy ship had taken, and used those actions to compute a movement vector for each enemy ship. This movement vector gave us some idea of where the enemy ship would likely move in the future, and was general enough to not overfit to different enemy strategies. At some point we considered implementing a more complex collision avoidance algorithm which would try to account for specific enemy strategies, but we never got around to fleshing out the idea. The movement vector was combined with a Gaussian blur to factor in prediction confidence and give a positive weight to unpredictable directions.
 
-Based on our enemy movement predictions, for each enemy player we added an collision factor to each square of the form
+Based on our enemy movement predictions, for each enemy `p`layer we added an collision factor to each square of the form
 
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=(\texttt{Collision \, Coef}) \, * \, (\texttt{Collision \, Cost}) \, * \, (\texttt{Probability \, of \, Move})"></div>
-where (Probability of Move) was the probability an enemy ship would move to the square based on its movement vector, `(Collision Coef)` was the number of enemy ships with less cargo from that enemy player surrounding our ship, and (Collision Cost) was
+
+where `Probability of Move` was the probability an enemy ship would move to the square based on its movement vector, `Collision Coef` was the number of enemy ships with less cargo from that enemy player surrounding our ship, and `Collision Cost` was
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=(\texttt{Collision \, Cost}) = 500 \, %2B \, cargo \, %2B \, (\texttt{Amortized \, Value})\, - \, (\texttt{Expected \, Amoritzed \, Value \, of \, New \, Ship})">.</div>
-The inspiration behind `(Collision Coef)` was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
+
+The inspiration behind `Collision Coef` was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
 
 ## Returning To Base
 As mentioned before, the ship return logic was an independent subsystem of the agent. Attacking ships would simply return if they had gained any cargo. However, note that an attacking ship with cargo was allowed to transition into mining mode if mining was worth more than returning. Mining ships returned only if at least one of the following four criteria were met: (1) the ship was in "danger", (2) the ship was too "heavy", (3) the game was about to end, or (4) depositing the ship's cargo right now would let us spawn a new ship sooner.
