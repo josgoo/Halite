@@ -98,9 +98,9 @@ Based on our enemy movement predictions, for each enemy player we added a collis
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{collision \, coef} \, * \, \texttt{collision \, cost} \, * \, \texttt{probability \, of \, move}"></div>
 
 where `probability of move` was the probability an enemy ship would move to the square based on its movement vector, `collision coef` was the number of lighter enemy ships from that enemy player surrounding our ship, and `collision cost` was
-<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{collision \, cost} = 500 \, %2B \, cargo \, %2B \, \texttt{amortized \, value} \, - \, \texttt{expected \, amoritzed \, value \, of \, new \, ship}">.</div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{collision \, cost} = 500 \, %2B \, cargo \, %2B \, \texttt{current \, amortized \, value} \, - \, \texttt{expected \, amoritzed \, value \, of \, new \, ship}">,</div>
 
-The inspiration behind `collision coef` was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
+which was the amount of halite that would be lost on the ship's destruction (500 for the price of the ship plus its current cargo) summed with the loss in amortized value between the current ship and a new ship which would replace it. The inspiration behind `collision coef` was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
 
 ## Returning To Base
 As mentioned before, the ship return logic was an independent subsystem of the agent. Attacking ships simply returned if they had gained any cargo. However, note that an attacking ship with cargo was allowed to transition into mining mode if mining was worth more than returning. Mining ships returned only if at least one of the following four criteria were met: (1) the ship was in "danger", (2) the ship was too "heavy", (3) the game was about to end, or (4) depositing the ship's cargo right now would let us spawn a new ship sooner.
