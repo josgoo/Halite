@@ -97,7 +97,7 @@ To implement collision avoidance, we needed a way to anticipate what opponent sh
 Based on our enemy movement predictions, for each enemy player we added a collision factor to each square of the form
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{collision \, coef} \, * \, \texttt{collision \, cost} \, * \, \texttt{probability \, of \, move}"></div>
 
-where `probability of move` was the probability an enemy ship would move to the square based on its movement vector, `collision coef` was the number of enemy ships with less cargo from that enemy player surrounding our ship, and `collision cost` was
+where `probability of move` was the probability an enemy ship would move to the square based on its movement vector, `collision coef` was the number of lighter enemy ships from that enemy player surrounding our ship, and `collision cost` was
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{collision \, cost} = 500 \, %2B \, cargo \, %2B \, \texttt{amortized \, value} \, - \, \texttt{expected \, amoritzed \, value \, of \, new \, ship}">.</div>
 
 The inspiration behind `collision coef` was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
