@@ -3,7 +3,7 @@
 ## Targeting & Amortized Values
 Similar to other teams, at a high level our logic pipeline had every ship choose a target square and then assigned each ship an optimal action to take to reach that target. To choose each target and action, our architecture computed an amortized value for every target which generally took the form
 
-<div align="center"> $\frac{Total \ Value \ of \ Target}{Total \ Turns \ Needed} * (Probability\ of \ Success)$ </div>
+<div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{Total \ Value \ of \ Target}{Total \ Turns \ Needed} * (Probability\ of \ Success)"></div>
 
 ## Dominance Map
 In order to determine the probability of successfully reaching a given square, we needed to have some way of representing which players dominated which parts of the board. Our final dominance map consisted two components: a *global* dominance map and a *ship-specific* dominance map. For the global dominance map, we created a sphere of influence for every enemy ship. The level of influence a ship exerts on a square is proportional to the probability that the ship will enter that square at some point over the next 2 turns, given that the ship is moving completely randomly. These probabilities effectively form a plus-shaped Gaussian blur around each enemy ship, as can be seen from the diagram below. `TODO: add diagram?`. Once we had a sphere of influence for each enemy ship, we used them to calculate for each square the probability that no enemy ship would enter that square for the next 2 turns. These probabilities formed the base of our global dominance map, with higher values indicating a smaller likelihood of any enemy ship crossing a square and therefore meaning that square is safer.
