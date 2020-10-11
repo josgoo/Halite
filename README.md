@@ -1,7 +1,7 @@
 # Intro
 This writeup details the implementation of the 29<sup>th</sup> place (out of 1139 teams) Halite IV agent and the learnings of the team that wrote it. For those who do not know, [Halite IV](https://www.kaggle.com/c/halite/overview) is a resource management game created by Two Sigma where you control a fleet of ships attempting to collect the as much halite as possible. An example game can be seen here:
 
-![A halite game.](halite.gif)
+![A halite game.](images/halite.gif)
 
 Before reading further, make sure to take a moment and skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level take-aways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as our fellow competitors for their fascinating insights and awesome writeups!
 
