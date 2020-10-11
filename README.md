@@ -41,33 +41,33 @@ The estimated probability that a particular enemy ship *e* would move to the squ
 
 After computing these amortized attack value lists, we again assigned an attack target to each ship in order of ship loss (in the same fashion as mining).
 
-## Assigning Actions to Ships: TODO
-To assign specific actions to each ship from its target we once again used loss to order the actions of each ship with the exception that ships returning to our base or in danger had precedent. 
+## Assigning Actions to Ships
+So far we have only discussed how we assigned targets to ships. However, once the targets have been assigned, we still need to pick an optimal movement action for each ship to reach its target from its current position. To determine the order of movement action assignment, we again used loss but made the exceptions that ships in immediate danger and ships returning to base had precedent.
 
-To actually determine direction, we labeled each action with the positive amortized value if it moved towards its target, negative amortized value if it moved away, and ( 0 + value of mining ) for staying still. Then we added a collision weighting onto the values and chose the direction with the highest value.
+We labeled each movement action with a positive value if it moved in the direction of the target and a negative value if it moved away from the target. Within each of these two cases, we gave a larger value to the direction which provided the most flexibility for later movements along the shortest path to the target. For example, if the shortest path to our target was 4 squares up and 7 squares left, we would prefer to move left rather than up because in the future we would have more chances to move in either direction (4 squares up and 6 squares left remaining instead of 3 squares up and 7 squares left). The value of staying still was simply the halite gained from mining the current square. We also added a collision weighting to the movement values (described in the Collision Avoidance section) to encourage safer movements.
 
-We also ran into cases where our ships wanted to move through eachother or would get trapped. In these cases, if the ships were of the same type and neither were returning, we swapped the targets for each. 
+There were a few edge cases in which our ships wanted to move through each other (adjacent ships with opposite desired movements) or would block each other. In these cases, if the ships were in the same mode (mining or attacking) and neither were returning to base, we simply swapped their targets.
 
-## Collision Avoidance: TODO
-To implement collision avoidance for our bot, we needed some way to anticipate what the opponent ships were doing. To do so, we stored the previous 3 moves each ship had made, and created a vector from it. This enemy vector gave us some idea of where the ship was planning on going. We purposely kept the enemy move prediction very general to not overfit it to different playstyles. We weren't confident we could do a more involved prediction analysis without accounting for the enemy strategy. We combined the vector with an uncertainty discount blur to give some amount of weight to every direction. 
+## Collision Avoidance
+To implement collision avoidance, we needed some way to anticipate and predict what the opponent ships would do. We stored the previous 3 actions each enemy ship had taken, and used those actions to compute a movement vector for each enemy ship. This movement vector gave us some idea of where the enemy ship would likely move in the future, and was general enough to not overfit to different enemy strategies. At some point we considered implementing a more complex collision avoidance algorithm which would try to account for specific enemy strategies, but we never got around to fleshing out the idea. The movement vector was combined with a Gaussian blur to factor in prediction confidence and give a positive weight to unpredictable directions.
 
-From the enemy movement prediction, we added a collision cost to each square.
+Based on our enemy movement predictions, for each enemy player we added an collision factor to each square of the form
 
 <div align="center"> $(Collision\ Coef)\ *\ (Collision\ Cost)\ *\ (Probability\ of\ Move) $ </div>
-where the (Probability of Move) was the vector probability an enemy ship moved to the square in question. The cost of collision was
-<div align="center"> $ (Collision\ Cost) = 500\ +\ cargo\ +\ (Amortized\ Value)\ -\ (Expected\ Amoritzed\ Value\ of\ New\ Ship)$ </div>
-The (Collision Coef) was the number of enemy ships with less cargo from that player surrounding our ship. The idea behind it being players with more ships surrounding our ship were more of a threat given that they can better coordinate their ships to attack more effectively. 
+where (Probability of Move) was the probability an enemy ship would move to the square based on its movement vector, (Collision Coef) was the number of enemy ships with less cargo from that enemy player surrounding our ship, and (Collision Cost) was
+<div align="center"> $ (Collision\ Cost) = 500\ +\ cargo\ +\ (Amortized\ Value)\ -\ (Expected\ Amoritzed\ Value\ of\ New\ Ship).$ </div>
+The inspiration behind (Collision Coef) was that enemy players with more surrounding ships were more of a threat, as they could coordinate their ships to attack more effectively.
 
-## Returning To Base: TODO
-Our returning to base strategy was coded as an independent thought from each ship's other options. Our attacking ships simply returned if they had any cargo. It is important to note, an attacking ship with cargo could also transition to a mining ship if it was better to mine than return. Our mining ships only returned if at least one of the following requirements were met: the ship was in danger, the ship was too heavy, the game was about to end, or the ship's cargo would speed up the number of turns it would take to create another ship.
+## Returning To Base:
+As mentioned before, the ship return logic was an independent subsystem of the agent. Attacking ships would simply return if they had gained any cargo. However, note that an attacking ship with cargo was allowed to transition into mining mode if mining was worth more than returning. Mining ships returned only if at least one of the following four criteria were met: (1) the ship was in "danger", (2) the ship was too "heavy", (3) the game was about to end, or (4) depositing the ship's cargo right now would let us spawn a new ship sooner.
 
-We crudely assed danger on a per ship basis through each ship's distance to lighter enemy ships over the past few turns. Every lighter enemy ship 1 manhattan distance away added 2 "danger" and every lighter empty ship 2 manhattan distance away added 1 "danger." A ship was considered in danger if the sum of the "danger" over the past 3 turns exceeded 5.
+We defined "danger" for each ship based on the number of lighter enemy ships within a certain distance over several turns. On any given turn, lighter enemy ships that were 1 or 2 Manhattan distance away from a ship added 1 or 2 points to that ship's "danger" counter. If the sum of the "danger" counter over the past 3 turns exceeded 5 for a ship, that ship was determined to be in danger and would satisfy condition (1) above.
 
-A ship was considered heavy based on a global danger variable. Our global danger value started near zero and every time any ship was in danger, the global value increased. The more global danger there was, the more incentivized our ships would be to return. The implementaion of this consisted of giving the nearest dropoff from a ship the value of $\frac{(Global\ Danger\ Value)\ *\ Cargo}{dist}$. If this value was greater than the amortized value of mining, the ship would return.
+The definition of "heavy" changed over the course of the game and was based on a global danger value which started near zero and was incremented every time a ship was in danger (meeting condition (1) above). As the global danger value increased, we wanted to incentivize our ships to return more often, the idea being that a high global danger value implied that enemies would be more likely to try to capture our ships. In practice, we gave the square containing the nearest dropoff to the ship a value of $\frac{(Global\ Danger\ Value)\ *\ Cargo}{dist}$. Therefore, if this value was greater than the value of mining, the ship would decide to return.
 
-We defined the endgame for each ship to be step $400 - dist - (buffer)$ where buffer was some additional time for ships to return to base. Any ship with cargo past their endgame step would be forced to return.
+For the third condition, each ship was forced to return once the game step reached $400 - dist - (buffer)$, where *dist* was the Manhattan distance to the nearest dropoff and *buffer* was a constant to allow additional time for ships to return to base in case the shortest path was blocked. Any ship that had cargo after this point was forced to return (and no longer cared about colliding with friendly ships).
 
-Lastly, in the beginning of the game we wanted ships to return more frequently to fund the creation of new ships. The return value for these ships was $\frac{(New\ Ship\ Value) * cargo/500}{dist}$ 
+Finally, near the beginning of the game we wanted ships to return more frequently in order to fund the creation of new ships. We defined the returning value of a ship to be $\frac{(New\ Ship\ Value) * cargo/500}{dist}$.
 $\textbf{Left out our gamma garbage}$
 
 ## Dropoff Spawning: TODO
