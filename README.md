@@ -74,7 +74,7 @@ The expected value of capturing an enemy ship `e` was defined as
 
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{expected \, value \, of \, capturing \, e}=(\texttt{probability \, of \, intersection})_e \, * \, (b \, %2B \, min(500, \, cargo_e))">.</div>
 
-Here, <code>(probability of intersection)<sub>e</sub></code> was the estimated probability that `e` would move to the current square at some point over the next 2 turns. `b` was a constant defining the implicit value of destroying an enemy ship, and <code>min(500, cargo<sub>e</sub>)</code> added in `e`'s cargo with a cap of 500. This cap was implemented to prevent overvaluing very high cargo ships, as these ships would typically convert to a shipyard if they sensed they were in immediate danger, stopping us from actually capturing them.
+Here, <code>(probability of intersection)<sub>e</sub></code> was the estimated probability that `e` would move to the current square at some point over the next 2 turns. `b` was a constant defining the implicit value of destroying an enemy ship, and <code>min(500, cargo<sub>e</sub>)</code> factored in `e`'s cargo with a cap of 500. This cap was implemented to prevent overvaluing very high cargo ships, as these ships would typically convert to a shipyard if they sensed they were in immediate danger, stopping us from actually capturing them.
 
 The expected number of steps needed for a friendly ship to capture an enemy ship `e` was defined as
 
