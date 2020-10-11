@@ -68,7 +68,7 @@ Similar to mining ships, for each attacking ship we compiled a list of amortized
 
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\sum_{e\ \in E_{dist(2)}} \frac{\texttt{expected \, value \, of \, capturing \, e}}{(n_e \, %2B \, 1) \, * \, \texttt{expeced \, num \, steps \, needed \, to \, capture \, e}}">,</div>
 
-where <code>E<sub>dist(2)</sub></code> was the set of enemy ships with nonzero cargo within Manhattan distance 2 of the square, and <code>n<sub>e</sub></code> was the number of friendly ships already assigned to attack enemy ship `e`. The attacking amortized value of any particular enemy ship is its expected capture value divided by the time it will take to successfully capture it. The division by <code>n<sub>e</sub> + 1</code> distributes this value evenly among all friendly ships which contributed to the capture (including the current ship, assuming it will be assigned to attack).
+where <code>E<sub>dist(2)</sub></code> was the set of enemy ships with nonzero cargo within Manhattan distance 2 of the square, and <code>n<sub>e</sub></code> was the number of friendly ships already assigned to attack enemy ship `e`. The attacking amortized value of any particular enemy ship is its expected capture value divided by the time it will take to successfully capture it. The division by <code>n<sub>e</sub> + 1</code> distributes this value evenly among all friendly ships which contributed to the capture (including the current ship, assuming it will be assigned to attack `e`).
 
 The expected value of capturing an enemy ship `e` was defined as
 
