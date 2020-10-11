@@ -1,3 +1,6 @@
+# Intro
+
+
 # 1. Approaching a Halite Problem: What We Learned
 
 While we learned a lot from thinking through and solving the many individual smaller-scale problems that formed the basis of our Halite bot, perhaps the most important things we discovered were lessons on forming high-level problem-solving approaches for large, complex problems like Halite. Before Halite IV, no one on the team had had any experience with coding competitions, and there are a handful of key takeaways which we plan to use when tackling future computer science projects. Hopefully they will provide some guidance to other first-time coding competitors, helping them avoid the biggest issues we ran into.
@@ -80,7 +83,6 @@ There were a few edge cases in which our ships wanted to move through each other
 To implement collision avoidance, we needed some way to anticipate and predict what the opponent ships would do. We stored the previous 3 actions each enemy ship had taken, and used those actions to compute a movement vector for each enemy ship. This movement vector gave us some idea of where the enemy ship would likely move in the future, and was general enough to not overfit to different enemy strategies. At some point we considered implementing a more complex collision avoidance algorithm which would try to account for specific enemy strategies, but we never got around to fleshing out the idea. The movement vector was combined with a Gaussian blur to factor in prediction confidence and give a positive weight to unpredictable directions.
 
 Based on our enemy movement predictions, for each enemy player we added an collision factor to each square of the form
-
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=(\texttt{collision \, coef}) \, * \, (\texttt{collision \, cost}) \, * \, (\texttt{probability \, of \, move})"></div>
 
 where `probability of move` was the probability an enemy ship would move to the square based on its movement vector, `collision coef` was the number of enemy ships with less cargo from that enemy player surrounding our ship, and `collision cost` was
