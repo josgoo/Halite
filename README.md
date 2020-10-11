@@ -31,7 +31,7 @@ Similar to other teams, our top-level logic pipeline chose a target square for e
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\frac{\texttt{total \, value \, of \, target}}{\texttt{total \, turns \, needed}} * \texttt{probability \, of \, success}."></div>
 
 ## Dominance Map
-In order to determine the probability of successfully reaching a given square, we needed to have some way of representing which players dominated which parts of the board. Our final dominance map consisted two components: a "global" dominance map and a "ship-specific" dominance map. For the global dominance map, we created a sphere of influence for every enemy ship. The level of influence a ship exerts on a square is proportional to the probability that the ship will enter that square at some point over the next 2 turns, given that the ship is moving completely randomly. These probabilities effectively formed a plus-shaped Gaussian blur around each enemy ship, as can be seen from the diagram below.
+In order to determine the probability of successfully reaching a given square, we needed a representation of which players dominated which parts of the board. Our final dominance map consisted two components: a "global" dominance map and a "ship-specific" dominance map. For the global dominance map, we created a sphere of influence for every enemy ship. The level of influence a ship exerts on a square is proportional to the probability that the ship will enter that square at some point over the next 2 turns, given that the ship is moving completely randomly. These probabilities effectively formed a plus-shaped Gaussian blur around each enemy ship, as can be seen from the diagram below.
 
 <div align="center">
 
