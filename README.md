@@ -1,4 +1,4 @@
-# Intro
+# Introduction - Team 677's Agent
 This writeup details the implementation of the 29<sup>th</sup> place (out of 1139 teams) Halite IV agent and the learnings of the team that wrote it. For those who do not know, [Halite IV](https://www.kaggle.com/c/halite/overview) is a resource management game created by Two Sigma where you control a fleet of ships attempting to collect the as much halite as possible. An example game can be seen here:
 
 <div align="center">
@@ -7,7 +7,7 @@ This writeup details the implementation of the 29<sup>th</sup> place (out of 113
 
 Before reading further, be sure to take a moment to skim the [game rules](https://www.kaggle.com/c/halite/overview/halite-rules) to have a better understanding of how everything works. This post is divided into two sections. The first section discusses our macro-level take-aways from the competition and the development skills we learned, while the second section dives into the agent implementation specifics. Big thanks to Kaggle and Two Sigma for creating an incredibly fun and well-run simulation competition, as well as our fellow competitors for their fascinating insights and awesome writeups!
 
-# 1. Approaching a Halite Problem: What We Learned
+# 1. What We Learned about Approaching a Halite Problem
 
 While we learned a lot from thinking through and solving the many individual smaller-scale problems that formed the basis of our Halite bot, perhaps the most important things we discovered were lessons on forming high-level problem-solving approaches for large, complex problems like Halite. Before Halite IV, no one on the team had had any experience with coding competitions, and there are a handful of key takeaways which we plan to use when tackling future computer science projects. Hopefully they will provide some guidance to other first-time coding competitors, helping them avoid the biggest issues we ran into.
 
