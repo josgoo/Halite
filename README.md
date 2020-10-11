@@ -94,7 +94,7 @@ There were a few edge cases in which our ships wanted to move through each other
 ## Collision Avoidance
 To implement collision avoidance, we needed a way to anticipate what opponent ships would do. We stored the previous 3 actions each enemy ship had taken, and used those actions to compute a movement vector for each enemy ship. This movement vector gave us some idea of where the enemy ship would likely move in the future, and was general enough to not overfit to any particular enemy strategies (at some point we considered implementing a more complex collision avoidance algorithm which would try to account for specific enemy strategies, but we never got around to fleshing out the idea). The movement vector was combined with a Gaussian blur to factor in prediction confidence and give a positive weight to unpredictable directions.
 
-Based on our enemy movement predictions, for each enemy player we added an collision factor to each square of the form
+Based on our enemy movement predictions, for each enemy player we added a collision factor to each square of the form
 <div align="center"><img src="https://render.githubusercontent.com/render/math?math=\texttt{collision \, coef} \, * \, \texttt{collision \, cost} \, * \, \texttt{probability \, of \, move}"></div>
 
 where `probability of move` was the probability an enemy ship would move to the square based on its movement vector, `collision coef` was the number of enemy ships with less cargo from that enemy player surrounding our ship, and `collision cost` was
