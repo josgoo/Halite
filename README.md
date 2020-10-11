@@ -134,4 +134,4 @@ Empirically however, we found that a shipyard ended up being worth far more than
 We added a small optimization which allowed us to always protect a shipyard if it was in immediate danger of being destroyed, even if we were below the protecting threshold: if an enemy ship was nearby and a friendly ship was adjacent to or on top of the shipyard, that ship would move to protect the shipyard.
 
 # Conclusion
-Halite IV was an amazingly enjoyable experience for everyone on the team, and we look forward to participating in subsequent competitions! Hopefully our learnings from this time around will let us reach even greater heights next time.
+Halite IV was an amazingly enjoyable experience for everyone on the team, and we look forward to participating in future competitions! Hopefully our learnings from this time around will let us reach even greater heights next time.
